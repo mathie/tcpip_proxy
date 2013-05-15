@@ -11,12 +11,12 @@ type Logger struct {
   data chan []byte
 }
 
-func NewConnectionLogger(conn_n int, local_info, remote_info string) *Logger {
-  return new(connectionLoggerFilename(conn_n, local_info, remote_info))
+func NewConnectionLogger(connectionNumber int, localInfo, remoteInfo string) *Logger {
+  return new(connectionLoggerFilename(connectionNumber, localInfo, remoteInfo))
 }
 
-func NewBinaryLogger(conn_n int, peer string) *Logger {
-  return new(binaryLoggerFilename(conn_n, peer))
+func NewBinaryLogger(connectionNumber int, peer string) *Logger {
+  return new(binaryLoggerFilename(connectionNumber, peer))
 }
 
 func (logger Logger) Log(format string, v ...interface{}) {
@@ -37,12 +37,12 @@ func new(filename string) *Logger {
   return logger
 }
 
-func connectionLoggerFilename(conn_n int, local_info, remote_info string) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), conn_n, local_info, remote_info)
+func connectionLoggerFilename(connectionNumber int, localInfo, remoteInfo string) string {
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, localInfo, remoteInfo)
 }
 
-func binaryLoggerFilename(conn_n int, peer string) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), conn_n, peer)
+func binaryLoggerFilename(connectionNumber int, peer string) string {
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, peer)
 }
 
 func (logger Logger) loggerLoop() {
