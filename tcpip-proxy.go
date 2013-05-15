@@ -43,10 +43,9 @@ type Channel struct {
   ack                   chan bool
 }
 
-func NewChannel(connection *Connection, direction int, connectionLogger *logger.Logger) *Channel {
-  peer := connection.Info(direction)
-  binaryLogger := logger.NewBinaryLogger(connection.connectionNumber, peer)
-  channel := &Channel{ from: connection.From(direction), to: connection.To(direction), connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: connection.ack }
+func NewChannel(from, to net.Conn, peer string, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
+  binaryLogger := logger.NewBinaryLogger(connectionNumber, peer)
+  channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack }
 
   go channel.PassThrough()
   return channel
@@ -179,6 +178,10 @@ func (connection Connection) To(direction int) net.Conn {
   panic("Unreachable.")
 }
 
+func (connection Connection) NewChannel(direction int, connectionLogger *logger.Logger) *Channel {
+  return NewChannel(connection.From(direction), connection.To(direction), connection.Info(direction), connection.connectionNumber, connectionLogger, connection.ack)
+}
+
 func (connection Connection) Process() {
   connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.LocalInfo(), connection.RemoteInfo())
   defer connectionLogger.Close()
@@ -187,8 +190,8 @@ func (connection Connection) Process() {
 
   connectionLogger.Log("Connected to %s.\n", connection.target)
 
-  NewChannel(&connection, LocalToRemote, connectionLogger)
-  NewChannel(&connection, RemoteToLocal, connectionLogger)
+  connection.NewChannel(LocalToRemote, connectionLogger)
+  connection.NewChannel(RemoteToLocal, connectionLogger)
 
   // Wait for acks from *both* the pass through channels.
   <-connection.ack
