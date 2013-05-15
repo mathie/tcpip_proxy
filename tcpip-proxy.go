@@ -65,38 +65,51 @@ func printable_addr(a net.Addr) string {
   return strings.Replace(a.String(), ":", "-", -1)
 }
 
+func log(logger chan []byte, format string, v ...interface{}) {
+  logger <- []byte(fmt.Sprintf(format + "\n", v...))
+}
+
 type Channel struct {
   from,   to            net.Conn
   logger, binary_logger chan []byte
   ack                   chan bool
 }
 
-func chan_log(channel *Channel, format string, v ...interface{}) {
+func (channel Channel) ChanLog(format string, v ...interface{}) {
   log(channel.logger, format, v...)
 }
 
-func log(logger chan []byte, format string, v ...interface{}) {
-  logger <- []byte(fmt.Sprintf(format + "\n", v...))
-}
-
-func log_hex(channel *Channel, bytes []byte) {
+func (channel Channel) LogHex(bytes []byte) {
   channel.logger <- []byte(hex.Dump(bytes))
 }
 
-func log_binary(channel *Channel, bytes []byte) {
+func (channel Channel) LogBinary(bytes []byte) {
   channel.binary_logger <- bytes
 }
 
-func pass_through(c *Channel) {
-  from_peer := printable_addr(c.from.LocalAddr())
-  to_peer   := printable_addr(c.to.LocalAddr())
+func (channel Channel) Read(buffer []byte) (n int, err error) {
+  return channel.from.Read(buffer)
+}
 
+func (channel Channel) Write(buffer []byte) (n int, err error) {
+  return channel.to.Write(buffer)
+}
+
+func (channel Channel) FromAddr() (addr string) {
+  return printable_addr(channel.from.LocalAddr())
+}
+
+func (channel Channel) ToAddr() (addr string) {
+  return printable_addr(channel.to.LocalAddr())
+}
+
+func pass_through(c *Channel) {
   b := make([]byte, 10240)
   offset := 0
   packet_n := 0
 
   for {
-    n, err := c.from.Read(b)
+    n, err := c.Read(b)
     if err != nil {
       break
     }
@@ -105,20 +118,20 @@ func pass_through(c *Channel) {
       continue
     }
 
-    chan_log(c, "Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, from_peer)
+    c.ChanLog("Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, c.FromAddr())
 
-    log_hex(c, b[:n])
-    log_binary(c, b[:n])
+    c.LogHex(b[:n])
+    c.LogBinary(b[:n])
 
-    c.to.Write(b[:n])
+    c.Write(b[:n])
 
-    chan_log(c, "Sent (#%d) to %s\n", packet_n, to_peer)
+    c.ChanLog("Sent (#%d) to %s\n", packet_n, c.ToAddr())
 
     offset += n
     packet_n += 1
   }
 
-  chan_log(c, "Disconnected from %s", from_peer)
+  c.ChanLog("Disconnected from %s", c.FromAddr())
   c.from.Close()
   c.to.Close()
   c.ack <- true
