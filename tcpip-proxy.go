@@ -26,28 +26,51 @@ func die(format string, v ...interface{}) {
   os.Exit(1)
 }
 
-func connection_logger(data chan []byte, conn_n int, local_info, remote_info string) {
-  log_name := fmt.Sprintf("log-%s-%04d-%s-%s.log", format_time(time.Now()), conn_n, local_info, remote_info)
-
-  logger_loop(data, log_name)
+type Logger struct {
+  filename string
+  data chan []byte
 }
 
-func binary_logger(data chan []byte, conn_n int, peer string) {
-  log_name := fmt.Sprintf("log-binary-%s-%04d-%s.log", format_time(time.Now()), conn_n, peer)
-
-  logger_loop(data, log_name)
+func NewLogger(filename string) *Logger {
+  logger := &Logger { data: make(chan []byte), filename: filename }
+  go logger.LoggerLoop()
+  return logger
 }
 
-func logger_loop(data chan []byte, log_name string) {
-  f, err := os.Create(log_name)
+func ConnectionLoggerFilename(conn_n int, local_info, remote_info string) string {
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", format_time(time.Now()), conn_n, local_info, remote_info)
+}
+
+func NewConnectionLogger(conn_n int, local_info, remote_info string) *Logger {
+  return NewLogger(ConnectionLoggerFilename(conn_n, local_info, remote_info))
+}
+
+func BinaryLoggerFilename(conn_n int, peer string) string {
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", format_time(time.Now()), conn_n, peer)
+}
+
+func NewBinaryLogger(conn_n int, peer string) *Logger {
+  return NewLogger(BinaryLoggerFilename(conn_n, peer))
+}
+
+func (logger Logger) Log(format string, v ...interface{}) {
+  logger.LogBinary([]byte(fmt.Sprintf(format + "\n", v...)))
+}
+
+func(logger Logger) LogBinary(bytes []byte) {
+  logger.data <- bytes
+}
+
+func (logger Logger) LoggerLoop() {
+  f, err := os.Create(logger.filename)
   if err != nil {
-    die("Unable to create log file, %s, %v", log_name, err)
+    die("Unable to create log file, %s, %v", logger.filename, err)
   }
 
   defer f.Close()
 
   for {
-    b := <-data
+    b := <- logger.data
     if len(b) == 0 {
       break
     }
@@ -55,6 +78,10 @@ func logger_loop(data chan []byte, log_name string) {
     f.Write(b)
     f.Sync()
   }
+}
+
+func (logger Logger) Close() {
+  logger.data <- []byte{}
 }
 
 func format_time(t time.Time) string {
@@ -65,26 +92,22 @@ func printable_addr(a net.Addr) string {
   return strings.Replace(a.String(), ":", "-", -1)
 }
 
-func log(logger chan []byte, format string, v ...interface{}) {
-  logger <- []byte(fmt.Sprintf(format + "\n", v...))
-}
-
 type Channel struct {
   from,   to            net.Conn
-  logger, binary_logger chan []byte
+  logger, binary_logger *Logger
   ack                   chan bool
 }
 
-func (channel Channel) ChanLog(format string, v ...interface{}) {
-  log(channel.logger, format, v...)
+func (channel Channel) Log(format string, v ...interface{}) {
+  channel.logger.Log(format, v...)
 }
 
 func (channel Channel) LogHex(bytes []byte) {
-  channel.logger <- []byte(hex.Dump(bytes))
+  channel.Log(hex.Dump(bytes))
 }
 
 func (channel Channel) LogBinary(bytes []byte) {
-  channel.binary_logger <- bytes
+  channel.binary_logger.LogBinary(bytes)
 }
 
 func (channel Channel) Read(buffer []byte) (n int, err error) {
@@ -93,6 +116,13 @@ func (channel Channel) Read(buffer []byte) (n int, err error) {
 
 func (channel Channel) Write(buffer []byte) (n int, err error) {
   return channel.to.Write(buffer)
+}
+
+func (channel Channel) Disconnect() {
+  channel.Log("Disconnected from %s", channel.FromAddr())
+  channel.from.Close()
+  channel.to.Close()
+  channel.ack <- true
 }
 
 func (channel Channel) FromAddr() (addr string) {
@@ -118,27 +148,20 @@ func pass_through(c *Channel) {
       continue
     }
 
-    c.ChanLog("Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, c.FromAddr())
+    c.Log("Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, c.FromAddr())
 
     c.LogHex(b[:n])
     c.LogBinary(b[:n])
 
     c.Write(b[:n])
 
-    c.ChanLog("Sent (#%d) to %s\n", packet_n, c.ToAddr())
+    c.Log("Sent (#%d) to %s\n", packet_n, c.ToAddr())
 
     offset += n
     packet_n += 1
   }
 
-  c.ChanLog("Disconnected from %s", c.FromAddr())
-  c.from.Close()
-  c.to.Close()
-  c.ack <- true
-}
-
-func close_logger(logger chan []byte) {
-  logger <- []byte{}
+  c.Disconnect()
 }
 
 func process_connection(local net.Conn, conn_n int, target string) {
@@ -152,16 +175,12 @@ func process_connection(local net.Conn, conn_n int, target string) {
 
   started := time.Now()
 
-  logger := make(chan []byte)
-  from_logger := make(chan []byte)
-  to_logger := make(chan []byte)
+  logger := NewConnectionLogger(conn_n, local_info, remote_info)
+  from_logger := NewBinaryLogger(conn_n, local_info)
+  to_logger := NewBinaryLogger(conn_n, remote_info)
   ack := make(chan bool)
 
-  go connection_logger(logger, conn_n, local_info, remote_info)
-  go binary_logger(from_logger, conn_n, local_info)
-  go binary_logger(to_logger, conn_n, remote_info)
-
-  log(logger, "Connected to %s at %s\n", target, format_time(started))
+  logger.Log("Connected to %s at %s\n", target, format_time(started))
 
   go pass_through(&Channel{remote, local, logger, to_logger, ack})
   go pass_through(&Channel{local, remote, logger, from_logger, ack})
@@ -173,11 +192,11 @@ func process_connection(local net.Conn, conn_n int, target string) {
   finished := time.Now()
   duration := finished.Sub(started)
 
-  log(logger, "Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String())
+  logger.Log("Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String())
 
-  close_logger(logger)
-  close_logger(from_logger)
-  close_logger(to_logger)
+  logger.Close()
+  from_logger.Close()
+  to_logger.Close()
 }
 
 func main() {
@@ -194,15 +213,14 @@ func main() {
 
   ln, err := net.Listen("tcp", ":" + *listen_port)
   if err != nil {
-    fmt.Printf("Unable to start listener %v\n", err)
-    os.Exit(1)
+    die("Unable to start listener %v", err)
   }
 
   conn_n := 1
   for {
     conn, err := ln.Accept()
     if err != nil {
-      fmt.Printf("Accept failed: %v\n", err)
+      warn("Accept failed: %v", err)
       continue
     }
 
