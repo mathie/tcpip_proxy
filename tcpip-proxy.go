@@ -92,14 +92,22 @@ func printable_addr(a net.Addr) string {
   return strings.Replace(a.String(), ":", "-", -1)
 }
 
+const (
+  LocalToRemote = iota
+  RemoteToLocal
+)
+
 type Channel struct {
   from,   to            net.Conn
   logger, binary_logger *Logger
   ack                   chan bool
 }
 
-func NewChannel(conn_n int, peer string, from, to net.Conn, logger *Logger, ack chan bool) *Channel {
-  channel := &Channel{ from: from, to: to, logger: logger, binary_logger: NewBinaryLogger(conn_n, peer), ack: ack }
+func NewChannel(connection *Connection, direction int, logger *Logger) *Channel {
+  peer := connection.Info(direction)
+  binaryLogger := NewBinaryLogger(connection.connectionNumber, peer)
+  channel := &Channel{ from: connection.From(direction), to: connection.To(direction), logger: logger, binary_logger: binaryLogger, ack: connection.ack }
+
   go channel.PassThrough()
   return channel
 }
@@ -171,35 +179,122 @@ func (channel Channel) PassThrough() {
   channel.Disconnect()
 }
 
-func process_connection(local net.Conn, conn_n int, target string) {
+type Connection struct {
+  local, remote net.Conn
+  connectionNumber int
+  target string
+  logger *Logger
+  ack chan bool
+}
+
+func NewConnection(local net.Conn, connectionNumber int, target string) *Connection {
   remote, err := net.Dial("tcp", target)
   if err != nil {
     die("Unable to connect to %s, %v", target, err)
   }
 
-  local_info := printable_addr(remote.LocalAddr())
-  remote_info := printable_addr(remote.RemoteAddr())
+  connection := &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
+  go connection.Process()
+  return connection
+}
+
+func (connection Connection) LocalInfo() string {
+  return printable_addr(connection.remote.LocalAddr())
+}
+
+func (connection Connection) RemoteInfo() string {
+  return printable_addr(connection.remote.RemoteAddr())
+}
+
+func (connection Connection) Info(direction int) string {
+  switch direction {
+  case LocalToRemote:
+    return connection.LocalInfo()
+  case RemoteToLocal:
+    return connection.RemoteInfo()
+  }
+
+  panic("Unreachable.")
+}
+
+func (connection Connection) From(direction int) net.Conn {
+  switch direction {
+  case LocalToRemote:
+    return connection.local
+  case RemoteToLocal:
+    return connection.remote
+  }
+
+  panic("Unreachable.")
+}
+
+func (connection Connection) To(direction int) net.Conn {
+  switch direction {
+  case LocalToRemote:
+    return connection.remote
+  case RemoteToLocal:
+    return connection.local
+  }
+
+  panic("Unreachable.")
+}
+
+func (connection Connection) Process() {
+  logger := NewConnectionLogger(connection.connectionNumber, connection.LocalInfo(), connection.RemoteInfo())
+  defer logger.Close()
 
   started := time.Now()
 
-  logger := NewConnectionLogger(conn_n, local_info, remote_info)
-  ack := make(chan bool)
+  logger.Log("Connected to %s at %s\n", connection.target, format_time(started))
 
-  logger.Log("Connected to %s at %s\n", target, format_time(started))
-
-  NewChannel(conn_n, local_info, local, remote, logger, ack)
-  NewChannel(conn_n, remote_info, remote, local, logger, ack)
+  NewChannel(&connection, LocalToRemote, logger)
+  NewChannel(&connection, RemoteToLocal, logger)
 
   // Wait for acks from *both* the pass through channels.
-  <-ack
-  <-ack
+  <-connection.ack
+  <-connection.ack
 
   finished := time.Now()
   duration := finished.Sub(started)
 
-  logger.Log("Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String())
+  logger.Log("Disconnected from %s at %s, duration %s\n", connection.target, format_time(finished), duration.String())
+}
 
-  logger.Close()
+type Proxy struct {
+  target string
+  local_port string
+  conn_n int
+}
+
+func RunProxy(target_host, target_port, local_port string) {
+  target := net.JoinHostPort(target_host, target_port)
+  proxy := &Proxy{ target: target, local_port: local_port, conn_n: 1 }
+  proxy.Run()
+}
+
+func (proxy Proxy) Run() {
+  fmt.Printf("Start listening on port %s and forwarding data to %s\n", proxy.local_port, proxy.target)
+
+  ln, err := net.Listen("tcp", ":" + proxy.local_port)
+  if err != nil {
+    die("Unable to start listener %v", err)
+  }
+
+  for {
+    conn, err := ln.Accept()
+    if err != nil {
+      warn("Accept failed: %v", err)
+      continue
+    }
+
+    proxy.ProcessConnection(conn)
+  }
+}
+
+func (proxy Proxy) ProcessConnection(connection net.Conn) {
+  NewConnection(connection, proxy.conn_n, proxy.target)
+
+  proxy.conn_n += 1
 }
 
 func main() {
@@ -211,25 +306,5 @@ func main() {
     os.Exit(1)
   }
 
-  target := net.JoinHostPort(*host, *port)
-  fmt.Printf("Start listening on port %s and forwarding data to %s\n", *listen_port, target)
-
-  ln, err := net.Listen("tcp", ":" + *listen_port)
-  if err != nil {
-    die("Unable to start listener %v", err)
-  }
-
-  conn_n := 1
-  for {
-    conn, err := ln.Accept()
-    if err != nil {
-      warn("Accept failed: %v", err)
-      continue
-    }
-
-    go process_connection(conn, conn_n, target)
-
-    conn_n += 1
-  }
+  RunProxy(*host, *port, *listen_port)
 }
-
