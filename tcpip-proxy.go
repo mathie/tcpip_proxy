@@ -9,6 +9,7 @@ import (
   "runtime"
   "strings"
   "time"
+  "logger"
 )
 
 var (
@@ -26,63 +27,6 @@ func die(format string, v ...interface{}) {
   os.Exit(1)
 }
 
-type Logger struct {
-  filename string
-  data chan []byte
-}
-
-func NewLogger(filename string) *Logger {
-  logger := &Logger { data: make(chan []byte), filename: filename }
-  go logger.LoggerLoop()
-  return logger
-}
-
-func ConnectionLoggerFilename(conn_n int, local_info, remote_info string) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", format_time(time.Now()), conn_n, local_info, remote_info)
-}
-
-func NewConnectionLogger(conn_n int, local_info, remote_info string) *Logger {
-  return NewLogger(ConnectionLoggerFilename(conn_n, local_info, remote_info))
-}
-
-func BinaryLoggerFilename(conn_n int, peer string) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", format_time(time.Now()), conn_n, peer)
-}
-
-func NewBinaryLogger(conn_n int, peer string) *Logger {
-  return NewLogger(BinaryLoggerFilename(conn_n, peer))
-}
-
-func (logger Logger) Log(format string, v ...interface{}) {
-  logger.LogBinary([]byte(fmt.Sprintf(format + "\n", v...)))
-}
-
-func(logger Logger) LogBinary(bytes []byte) {
-  logger.data <- bytes
-}
-
-func (logger Logger) LoggerLoop() {
-  f, err := os.Create(logger.filename)
-  if err != nil {
-    die("Unable to create log file, %s, %v", logger.filename, err)
-  }
-
-  defer f.Close()
-
-  for {
-    b := <- logger.data
-    if len(b) == 0 {
-      break
-    }
-
-    f.Write(b)
-    f.Sync()
-  }
-}
-
-func (logger Logger) Close() {
-  logger.data <- []byte{}
-}
 
 func format_time(t time.Time) string {
   return t.Format("2006.01.02-15.04.05")
@@ -99,21 +43,21 @@ const (
 
 type Channel struct {
   from,   to            net.Conn
-  logger, binary_logger *Logger
+  connectionLogger, binary_logger *logger.Logger
   ack                   chan bool
 }
 
-func NewChannel(connection *Connection, direction int, logger *Logger) *Channel {
+func NewChannel(connection *Connection, direction int, connectionLogger *logger.Logger) *Channel {
   peer := connection.Info(direction)
-  binaryLogger := NewBinaryLogger(connection.connectionNumber, peer)
-  channel := &Channel{ from: connection.From(direction), to: connection.To(direction), logger: logger, binary_logger: binaryLogger, ack: connection.ack }
+  binaryLogger := logger.NewBinaryLogger(connection.connectionNumber, peer)
+  channel := &Channel{ from: connection.From(direction), to: connection.To(direction), connectionLogger: connectionLogger, binary_logger: binaryLogger, ack: connection.ack }
 
   go channel.PassThrough()
   return channel
 }
 
 func (channel Channel) Log(format string, v ...interface{}) {
-  channel.logger.Log(format, v...)
+  channel.connectionLogger.Log(format, v...)
 }
 
 func (channel Channel) LogHex(bytes []byte) {
@@ -183,7 +127,7 @@ type Connection struct {
   local, remote net.Conn
   connectionNumber int
   target string
-  logger *Logger
+  logger *logger.Logger
   ack chan bool
 }
 
@@ -240,15 +184,15 @@ func (connection Connection) To(direction int) net.Conn {
 }
 
 func (connection Connection) Process() {
-  logger := NewConnectionLogger(connection.connectionNumber, connection.LocalInfo(), connection.RemoteInfo())
-  defer logger.Close()
+  connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.LocalInfo(), connection.RemoteInfo())
+  defer connectionLogger.Close()
 
   started := time.Now()
 
-  logger.Log("Connected to %s at %s\n", connection.target, format_time(started))
+  connectionLogger.Log("Connected to %s at %s\n", connection.target, format_time(started))
 
-  NewChannel(&connection, LocalToRemote, logger)
-  NewChannel(&connection, RemoteToLocal, logger)
+  NewChannel(&connection, LocalToRemote, connectionLogger)
+  NewChannel(&connection, RemoteToLocal, connectionLogger)
 
   // Wait for acks from *both* the pass through channels.
   <-connection.ack
@@ -257,7 +201,7 @@ func (connection Connection) Process() {
   finished := time.Now()
   duration := finished.Sub(started)
 
-  logger.Log("Disconnected from %s at %s, duration %s\n", connection.target, format_time(finished), duration.String())
+  connectionLogger.Log("Disconnected from %s at %s, duration %s\n", connection.target, format_time(finished), duration.String())
 }
 
 type Proxy struct {
