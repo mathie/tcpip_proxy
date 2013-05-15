@@ -17,8 +17,12 @@ var (
   listen_port *string = flag.String("listen_port", "0", "listen port")
 )
 
-func die(format string, v ...interface{}) {
+func warn(format string, v ...interface{}) {
   os.Stderr.WriteString(fmt.Sprintf(format + "\n", v...))
+}
+
+func die(format string, v ...interface{}) {
+  warn(format, v...)
   os.Exit(1)
 }
 
@@ -67,6 +71,22 @@ type Channel struct {
   ack                   chan bool
 }
 
+func chan_log(channel *Channel, format string, v ...interface{}) {
+  log(channel.logger, format, v...)
+}
+
+func log(logger chan []byte, format string, v ...interface{}) {
+  logger <- []byte(fmt.Sprintf(format + "\n", v...))
+}
+
+func log_hex(channel *Channel, bytes []byte) {
+  channel.logger <- []byte(hex.Dump(bytes))
+}
+
+func log_binary(channel *Channel, bytes []byte) {
+  channel.binary_logger <- bytes
+}
+
 func pass_through(c *Channel) {
   from_peer := printable_addr(c.from.LocalAddr())
   to_peer   := printable_addr(c.to.LocalAddr())
@@ -78,28 +98,34 @@ func pass_through(c *Channel) {
   for {
     n, err := c.from.Read(b)
     if err != nil {
-      c.logger <- []byte(fmt.Sprintf("Disconnected from %s\n", from_peer))
       break
     }
 
-    if n > 0 {
-      c.logger <- []byte(fmt.Sprintf("Received (#%d, %08X) %d bytes from %s\n", packet_n, offset, n, from_peer))
-      c.logger <- []byte(hex.Dump(b[:n]))
-
-      c.binary_logger <- b[:n]
-
-      c.to.Write(b[:n])
-
-      c.logger <- []byte(fmt.Sprintf("Sent (#%d) to %s\n", packet_n, to_peer))
-
-      offset += n
-      packet_n += 1
+    if n <= 0 {
+      continue
     }
+
+    chan_log(c, "Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, from_peer)
+
+    log_hex(c, b[:n])
+    log_binary(c, b[:n])
+
+    c.to.Write(b[:n])
+
+    chan_log(c, "Sent (#%d) to %s\n", packet_n, to_peer)
+
+    offset += n
+    packet_n += 1
   }
 
+  chan_log(c, "Disconnected from %s", from_peer)
   c.from.Close()
   c.to.Close()
   c.ack <- true
+}
+
+func close_logger(logger chan []byte) {
+  logger <- []byte{}
 }
 
 func process_connection(local net.Conn, conn_n int, target string) {
@@ -122,7 +148,7 @@ func process_connection(local net.Conn, conn_n int, target string) {
   go binary_logger(from_logger, conn_n, local_info)
   go binary_logger(to_logger, conn_n, remote_info)
 
-  logger <- []byte(fmt.Sprintf("Connected to %s at %s\n", target, format_time(started)))
+  log(logger, "Connected to %s at %s\n", target, format_time(started))
 
   go pass_through(&Channel{remote, local, logger, to_logger, ack})
   go pass_through(&Channel{local, remote, logger, from_logger, ack})
@@ -134,18 +160,18 @@ func process_connection(local net.Conn, conn_n int, target string) {
   finished := time.Now()
   duration := finished.Sub(started)
 
-  logger <- []byte(fmt.Sprintf("Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String()))
+  log(logger, "Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String())
 
-  logger <- []byte{}
-  from_logger <- []byte{}
-  to_logger <- []byte{}
+  close_logger(logger)
+  close_logger(from_logger)
+  close_logger(to_logger)
 }
 
 func main() {
   runtime.GOMAXPROCS(runtime.NumCPU())
   flag.Parse()
   if flag.NFlag() != 3 {
-    fmt.Printf("Usage: tcpip-proxy -host target_host -port target_port -listen_port local_port\n")
+    warn("Usage: tcpip-proxy -host target_host -port target_port -listen_port local_port")
     flag.PrintDefaults()
     os.Exit(1)
   }
