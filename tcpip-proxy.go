@@ -28,10 +28,6 @@ func die(format string, v ...interface{}) {
 }
 
 
-func format_time(t time.Time) string {
-  return t.Format("2006.01.02-15.04.05")
-}
-
 func printable_addr(a net.Addr) string {
   return strings.Replace(a.String(), ":", "-", -1)
 }
@@ -189,7 +185,7 @@ func (connection Connection) Process() {
 
   started := time.Now()
 
-  connectionLogger.Log("Connected to %s at %s\n", connection.target, format_time(started))
+  connectionLogger.Log("Connected to %s.\n", connection.target)
 
   NewChannel(&connection, LocalToRemote, connectionLogger)
   NewChannel(&connection, RemoteToLocal, connectionLogger)
@@ -201,7 +197,7 @@ func (connection Connection) Process() {
   finished := time.Now()
   duration := finished.Sub(started)
 
-  connectionLogger.Log("Disconnected from %s at %s, duration %s\n", connection.target, format_time(finished), duration.String())
+  connectionLogger.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
 }
 
 type Proxy struct {

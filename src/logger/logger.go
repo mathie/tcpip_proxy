@@ -20,7 +20,7 @@ func NewBinaryLogger(conn_n int, peer string) *Logger {
 }
 
 func (logger Logger) Log(format string, v ...interface{}) {
-  logger.LogBinary([]byte(fmt.Sprintf(format + "\n", v...)))
+  logger.LogBinary([]byte(fmt.Sprintf("[" + timestamp() + "] " + format + "\n", v...)))
 }
 
 func(logger Logger) LogBinary(bytes []byte) {
@@ -38,11 +38,11 @@ func new(filename string) *Logger {
 }
 
 func connectionLoggerFilename(conn_n int, local_info, remote_info string) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", formatTime(time.Now()), conn_n, local_info, remote_info)
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), conn_n, local_info, remote_info)
 }
 
 func binaryLoggerFilename(conn_n int, peer string) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", formatTime(time.Now()), conn_n, peer)
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), conn_n, peer)
 }
 
 func (logger Logger) loggerLoop() {
@@ -62,6 +62,10 @@ func (logger Logger) loggerLoop() {
     f.Write(b)
     f.Sync()
   }
+}
+
+func timestamp() string {
+  return formatTime(time.Now())
 }
 
 func formatTime(t time.Time) string {
