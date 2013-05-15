@@ -7,14 +7,17 @@ import (
 )
 
 type Channel struct {
-  from, to            net.Conn
-  connectionLogger, binaryLogger *logger.Logger
-  ack                   chan bool
+  from, to             net.Conn
+  connectionLogger     *logger.Logger
+  binaryLogger         *logger.Logger
+  ack                  chan bool
+  buffer               []byte
+  offset, packetNumber int
 }
 
 func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
   binaryLogger := logger.NewBinaryLogger(connectionNumber, peerAddr)
-  channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack }
+  channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack, buffer: make([]byte, 10240) }
 
   go channel.passThrough()
   return channel
@@ -57,32 +60,35 @@ func (channel Channel) toAddr() (addr net.Addr) {
 }
 
 func (channel Channel) passThrough() {
-  b := make([]byte, 10240)
-  offset := 0
-  packetNumber := 0
-
   for {
-    n, err := channel.read(b)
+    err := channel.processPacket()
     if err != nil {
       break
     }
-
-    if n <= 0 {
-      continue
-    }
-
-    channel.log("Received (#%d, %08X) %d bytes from %v", packetNumber, offset, n, channel.fromAddr())
-
-    channel.logHex(b[:n])
-    channel.logBinary(b[:n])
-
-    channel.write(b[:n])
-
-    channel.log("Sent (#%d) to %v\n", packetNumber, channel.toAddr())
-
-    offset += n
-    packetNumber += 1
   }
 
   channel.disconnect()
+}
+
+func (channel Channel) processPacket() error {
+  n, err := channel.read(channel.buffer)
+  if err == nil && n > 0 {
+    channel.processSuccessfulPacket(n)
+  }
+  return err
+}
+
+func (channel Channel) processSuccessfulPacket(bytesRead int) {
+  channel.log("Received (#%d, %08X) %d bytes from %v", channel.packetNumber, channel.offset, bytesRead, channel.fromAddr())
+  channel.logAndWriteData(channel.buffer[:bytesRead])
+  channel.log("Sent (#%d) to %v\n", channel.packetNumber, channel.toAddr())
+
+  channel.offset       += bytesRead
+  channel.packetNumber += 1
+}
+
+func (channel Channel) logAndWriteData(data []byte) {
+  channel.logHex(data)
+  channel.logBinary(data)
+  channel.write(data)
 }

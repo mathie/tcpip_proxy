@@ -18,19 +18,19 @@ func warn(format string, v ...interface{}) {
   os.Stderr.WriteString(fmt.Sprintf(format + "\n", v...))
 }
 
-func die(format string, v ...interface{}) {
-  warn(format, v...)
-  os.Exit(1)
-}
-
-func main() {
-  runtime.GOMAXPROCS(runtime.NumCPU())
+func parseArgs() {
   flag.Parse()
   if flag.NFlag() != 3 {
     warn("Usage: tcpip-proxy -host targetHost -port targetPort -listenPort localPort")
     flag.PrintDefaults()
     os.Exit(1)
   }
+}
+
+func main() {
+  runtime.GOMAXPROCS(runtime.NumCPU())
+
+  parseArgs()
 
   proxy.RunProxy(*host, *port, *listenPort)
 }
