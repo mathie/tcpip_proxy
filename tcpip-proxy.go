@@ -98,6 +98,12 @@ type Channel struct {
   ack                   chan bool
 }
 
+func NewChannel(conn_n int, peer string, from, to net.Conn, logger *Logger, ack chan bool) *Channel {
+  channel := &Channel{ from: from, to: to, logger: logger, binary_logger: NewBinaryLogger(conn_n, peer), ack: ack }
+  go channel.PassThrough()
+  return channel
+}
+
 func (channel Channel) Log(format string, v ...interface{}) {
   channel.logger.Log(format, v...)
 }
@@ -122,6 +128,7 @@ func (channel Channel) Disconnect() {
   channel.Log("Disconnected from %s", channel.FromAddr())
   channel.from.Close()
   channel.to.Close()
+  channel.binary_logger.Close()
   channel.ack <- true
 }
 
@@ -133,13 +140,13 @@ func (channel Channel) ToAddr() (addr string) {
   return printable_addr(channel.to.LocalAddr())
 }
 
-func pass_through(c *Channel) {
+func (channel Channel) PassThrough() {
   b := make([]byte, 10240)
   offset := 0
   packet_n := 0
 
   for {
-    n, err := c.Read(b)
+    n, err := channel.Read(b)
     if err != nil {
       break
     }
@@ -148,20 +155,20 @@ func pass_through(c *Channel) {
       continue
     }
 
-    c.Log("Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, c.FromAddr())
+    channel.Log("Received (#%d, %08X) %d bytes from %s", packet_n, offset, n, channel.FromAddr())
 
-    c.LogHex(b[:n])
-    c.LogBinary(b[:n])
+    channel.LogHex(b[:n])
+    channel.LogBinary(b[:n])
 
-    c.Write(b[:n])
+    channel.Write(b[:n])
 
-    c.Log("Sent (#%d) to %s\n", packet_n, c.ToAddr())
+    channel.Log("Sent (#%d) to %s\n", packet_n, channel.ToAddr())
 
     offset += n
     packet_n += 1
   }
 
-  c.Disconnect()
+  channel.Disconnect()
 }
 
 func process_connection(local net.Conn, conn_n int, target string) {
@@ -176,14 +183,12 @@ func process_connection(local net.Conn, conn_n int, target string) {
   started := time.Now()
 
   logger := NewConnectionLogger(conn_n, local_info, remote_info)
-  from_logger := NewBinaryLogger(conn_n, local_info)
-  to_logger := NewBinaryLogger(conn_n, remote_info)
   ack := make(chan bool)
 
   logger.Log("Connected to %s at %s\n", target, format_time(started))
 
-  go pass_through(&Channel{remote, local, logger, to_logger, ack})
-  go pass_through(&Channel{local, remote, logger, from_logger, ack})
+  NewChannel(conn_n, local_info, local, remote, logger, ack)
+  NewChannel(conn_n, remote_info, remote, local, logger, ack)
 
   // Wait for acks from *both* the pass through channels.
   <-ack
@@ -195,8 +200,6 @@ func process_connection(local net.Conn, conn_n int, target string) {
   logger.Log("Disconnected from %s at %s, duration %s\n", target, format_time(finished), duration.String())
 
   logger.Close()
-  from_logger.Close()
-  to_logger.Close()
 }
 
 func main() {
