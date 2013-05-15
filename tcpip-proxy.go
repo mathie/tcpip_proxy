@@ -1,7 +1,6 @@
 package main
 
 import (
-  "encoding/hex"
   "flag"
   "fmt"
   "net"
@@ -10,6 +9,7 @@ import (
   "strings"
   "time"
   "logger"
+  "channel"
 )
 
 var (
@@ -28,95 +28,10 @@ func die(format string, v ...interface{}) {
 }
 
 
-func printableAddr(a net.Addr) string {
-  return strings.Replace(a.String(), ":", "-", -1)
-}
-
 const (
   LocalToRemote = iota
   RemoteToLocal
 )
-
-type Channel struct {
-  from,   to            net.Conn
-  connectionLogger, binaryLogger *logger.Logger
-  ack                   chan bool
-}
-
-func NewChannel(from, to net.Conn, peer string, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
-  binaryLogger := logger.NewBinaryLogger(connectionNumber, peer)
-  channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack }
-
-  go channel.PassThrough()
-  return channel
-}
-
-func (channel Channel) Log(format string, v ...interface{}) {
-  channel.connectionLogger.Log(format, v...)
-}
-
-func (channel Channel) LogHex(bytes []byte) {
-  channel.Log(hex.Dump(bytes))
-}
-
-func (channel Channel) LogBinary(bytes []byte) {
-  channel.binaryLogger.LogBinary(bytes)
-}
-
-func (channel Channel) Read(buffer []byte) (n int, err error) {
-  return channel.from.Read(buffer)
-}
-
-func (channel Channel) Write(buffer []byte) (n int, err error) {
-  return channel.to.Write(buffer)
-}
-
-func (channel Channel) Disconnect() {
-  channel.Log("Disconnected from %s", channel.FromAddr())
-  channel.from.Close()
-  channel.to.Close()
-  channel.binaryLogger.Close()
-  channel.ack <- true
-}
-
-func (channel Channel) FromAddr() (addr string) {
-  return printableAddr(channel.from.LocalAddr())
-}
-
-func (channel Channel) ToAddr() (addr string) {
-  return printableAddr(channel.to.LocalAddr())
-}
-
-func (channel Channel) PassThrough() {
-  b := make([]byte, 10240)
-  offset := 0
-  packetNumber := 0
-
-  for {
-    n, err := channel.Read(b)
-    if err != nil {
-      break
-    }
-
-    if n <= 0 {
-      continue
-    }
-
-    channel.Log("Received (#%d, %08X) %d bytes from %s", packetNumber, offset, n, channel.FromAddr())
-
-    channel.LogHex(b[:n])
-    channel.LogBinary(b[:n])
-
-    channel.Write(b[:n])
-
-    channel.Log("Sent (#%d) to %s\n", packetNumber, channel.ToAddr())
-
-    offset += n
-    packetNumber += 1
-  }
-
-  channel.Disconnect()
-}
 
 type Connection struct {
   local, remote net.Conn
@@ -135,6 +50,10 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
   connection := &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
   go connection.Process()
   return connection
+}
+
+func printableAddr(a net.Addr) string {
+  return strings.Replace(a.String(), ":", "-", -1)
 }
 
 func (connection Connection) LocalInfo() string {
@@ -178,8 +97,8 @@ func (connection Connection) To(direction int) net.Conn {
   panic("Unreachable.")
 }
 
-func (connection Connection) NewChannel(direction int, connectionLogger *logger.Logger) *Channel {
-  return NewChannel(connection.From(direction), connection.To(direction), connection.Info(direction), connection.connectionNumber, connectionLogger, connection.ack)
+func (connection Connection) NewChannel(direction int, connectionLogger *logger.Logger) *channel.Channel {
+  return channel.NewChannel(connection.From(direction), connection.To(direction), connection.Info(direction), connection.connectionNumber, connectionLogger, connection.ack)
 }
 
 func (connection Connection) Process() {
