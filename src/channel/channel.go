@@ -3,7 +3,6 @@ package channel
 import (
   "net"
   "encoding/hex"
-  "strings"
   "logger"
 )
 
@@ -13,8 +12,8 @@ type Channel struct {
   ack                   chan bool
 }
 
-func NewChannel(from, to net.Conn, peer string, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
-  binaryLogger := logger.NewBinaryLogger(connectionNumber, peer)
+func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
+  binaryLogger := logger.NewBinaryLogger(connectionNumber, peerAddr)
   channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack }
 
   go channel.passThrough()
@@ -42,19 +41,19 @@ func (channel Channel) write(buffer []byte) (n int, err error) {
 }
 
 func (channel Channel) disconnect() {
-  channel.log("Disconnected from %s", channel.fromAddr())
+  channel.log("Disconnected from %v", channel.fromAddr())
   channel.from.Close()
   channel.to.Close()
   channel.binaryLogger.Close()
   channel.ack <- true
 }
 
-func (channel Channel) fromAddr() (addr string) {
-  return printableAddr(channel.from.LocalAddr())
+func (channel Channel) fromAddr() (addr net.Addr) {
+  return channel.from.LocalAddr()
 }
 
-func (channel Channel) toAddr() (addr string) {
-  return printableAddr(channel.to.LocalAddr())
+func (channel Channel) toAddr() (addr net.Addr) {
+  return channel.to.LocalAddr()
 }
 
 func (channel Channel) passThrough() {
@@ -72,22 +71,18 @@ func (channel Channel) passThrough() {
       continue
     }
 
-    channel.log("Received (#%d, %08X) %d bytes from %s", packetNumber, offset, n, channel.fromAddr())
+    channel.log("Received (#%d, %08X) %d bytes from %v", packetNumber, offset, n, channel.fromAddr())
 
     channel.logHex(b[:n])
     channel.logBinary(b[:n])
 
     channel.write(b[:n])
 
-    channel.log("Sent (#%d) to %s\n", packetNumber, channel.toAddr())
+    channel.log("Sent (#%d) to %v\n", packetNumber, channel.toAddr())
 
     offset += n
     packetNumber += 1
   }
 
   channel.disconnect()
-}
-
-func printableAddr(a net.Addr) string {
-  return strings.Replace(a.String(), ":", "-", -1)
 }

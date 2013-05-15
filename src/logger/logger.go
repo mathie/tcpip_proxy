@@ -2,6 +2,8 @@ package logger
 
 import (
   "fmt"
+  "strings"
+  "net"
   "os"
   "time"
 )
@@ -11,12 +13,12 @@ type Logger struct {
   data chan []byte
 }
 
-func NewConnectionLogger(connectionNumber int, localInfo, remoteInfo string) *Logger {
-  return new(connectionLoggerFilename(connectionNumber, localInfo, remoteInfo))
+func NewConnectionLogger(connectionNumber int, localInfo, remoteAddr net.Addr) *Logger {
+  return new(connectionLoggerFilename(connectionNumber, localInfo, remoteAddr))
 }
 
-func NewBinaryLogger(connectionNumber int, peer string) *Logger {
-  return new(binaryLoggerFilename(connectionNumber, peer))
+func NewBinaryLogger(connectionNumber int, peerAddr net.Addr) *Logger {
+  return new(binaryLoggerFilename(connectionNumber, peerAddr))
 }
 
 func (logger Logger) Log(format string, v ...interface{}) {
@@ -37,12 +39,12 @@ func new(filename string) *Logger {
   return logger
 }
 
-func connectionLoggerFilename(connectionNumber int, localInfo, remoteInfo string) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, localInfo, remoteInfo)
+func connectionLoggerFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
 }
 
-func binaryLoggerFilename(connectionNumber int, peer string) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, peer)
+func binaryLoggerFilename(connectionNumber int, peerAddr net.Addr) string {
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
 }
 
 func (logger Logger) loggerLoop() {
@@ -70,4 +72,8 @@ func timestamp() string {
 
 func formatTime(t time.Time) string {
   return t.Format("2006.01.02-15.04.05")
+}
+
+func printableAddr(a net.Addr) string {
+  return strings.Replace(a.String(), ":", "-", -1)
 }

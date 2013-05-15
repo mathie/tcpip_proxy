@@ -6,10 +6,7 @@ import (
   "net"
   "os"
   "runtime"
-  "strings"
-  "time"
-  "logger"
-  "channel"
+  "connection"
 )
 
 var (
@@ -25,101 +22,6 @@ func warn(format string, v ...interface{}) {
 func die(format string, v ...interface{}) {
   warn(format, v...)
   os.Exit(1)
-}
-
-
-const (
-  LocalToRemote = iota
-  RemoteToLocal
-)
-
-type Connection struct {
-  local, remote net.Conn
-  connectionNumber int
-  target string
-  logger *logger.Logger
-  ack chan bool
-}
-
-func NewConnection(local net.Conn, connectionNumber int, target string) *Connection {
-  remote, err := net.Dial("tcp", target)
-  if err != nil {
-    die("Unable to connect to %s, %v", target, err)
-  }
-
-  connection := &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
-  go connection.Process()
-  return connection
-}
-
-func printableAddr(a net.Addr) string {
-  return strings.Replace(a.String(), ":", "-", -1)
-}
-
-func (connection Connection) LocalInfo() string {
-  return printableAddr(connection.remote.LocalAddr())
-}
-
-func (connection Connection) RemoteInfo() string {
-  return printableAddr(connection.remote.RemoteAddr())
-}
-
-func (connection Connection) Info(direction int) string {
-  switch direction {
-  case LocalToRemote:
-    return connection.LocalInfo()
-  case RemoteToLocal:
-    return connection.RemoteInfo()
-  }
-
-  panic("Unreachable.")
-}
-
-func (connection Connection) From(direction int) net.Conn {
-  switch direction {
-  case LocalToRemote:
-    return connection.local
-  case RemoteToLocal:
-    return connection.remote
-  }
-
-  panic("Unreachable.")
-}
-
-func (connection Connection) To(direction int) net.Conn {
-  switch direction {
-  case LocalToRemote:
-    return connection.remote
-  case RemoteToLocal:
-    return connection.local
-  }
-
-  panic("Unreachable.")
-}
-
-func (connection Connection) NewChannel(direction int, connectionLogger *logger.Logger) *channel.Channel {
-  return channel.NewChannel(connection.From(direction), connection.To(direction), connection.Info(direction), connection.connectionNumber, connectionLogger, connection.ack)
-}
-
-func (connection Connection) Process() {
-  connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.LocalInfo(), connection.RemoteInfo())
-  defer connectionLogger.Close()
-
-  started := time.Now()
-
-  connectionLogger.Log("Connected to %s.\n", connection.target)
-
-  connection.NewChannel(LocalToRemote, connectionLogger)
-  connection.NewChannel(RemoteToLocal, connectionLogger)
-
-  // Wait for acks from *both* the pass through channels.
-  <-connection.ack
-  <-connection.ack
-
-  finished := time.Now()
-  duration := finished.Sub(started)
-
-  connectionLogger.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
 }
 
 type Proxy struct {
@@ -153,8 +55,8 @@ func (proxy Proxy) Run() {
   }
 }
 
-func (proxy Proxy) ProcessConnection(connection net.Conn) {
-  NewConnection(connection, proxy.connectionNumber, proxy.target)
+func (proxy Proxy) ProcessConnection(incomingConnection net.Conn) {
+  connection.NewConnection(incomingConnection, proxy.connectionNumber, proxy.target)
 
   proxy.connectionNumber += 1
 }
