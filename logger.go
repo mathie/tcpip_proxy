@@ -2,15 +2,15 @@ package main
 
 import (
   "fmt"
-  "strings"
   "net"
   "os"
+  "strings"
   "time"
 )
 
 type Logger struct {
   filename string
-  data chan []byte
+  data     chan []byte
 }
 
 func NewConnectionLogger(connectionNumber int, localInfo, remoteAddr net.Addr) *Logger {
@@ -30,7 +30,7 @@ func (logger Logger) LoggerLoop() {
   defer f.Close()
 
   for {
-    b := <- logger.data
+    b := <-logger.data
     if len(b) == 0 {
       break
     }
@@ -41,10 +41,10 @@ func (logger Logger) LoggerLoop() {
 }
 
 func (logger Logger) Log(format string, v ...interface{}) {
-  logger.LogBinary([]byte(fmt.Sprintf("[" + timestamp() + "] " + format + "\n", v...)))
+  logger.LogBinary([]byte(fmt.Sprintf("["+timestamp()+"] "+format+"\n", v...)))
 }
 
-func(logger Logger) LogBinary(bytes []byte) {
+func (logger Logger) LogBinary(bytes []byte) {
   logger.data <- bytes
 }
 
@@ -53,8 +53,8 @@ func (logger Logger) Close() {
 }
 
 func newLogger(filename string) *Logger {
-  return &Logger {
-    data: make(chan []byte),
+  return &Logger{
+    data:     make(chan []byte),
     filename: filename,
   }
 }

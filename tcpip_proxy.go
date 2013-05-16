@@ -8,13 +8,13 @@ import (
 )
 
 var (
-  host *string = flag.String("host", "", "target host or address")
-  port *string = flag.String("port", "0", "target port")
+  host       *string = flag.String("host", "", "target host or address")
+  port       *string = flag.String("port", "0", "target port")
   listenPort *string = flag.String("listenPort", "0", "listen port")
 )
 
 func warn(format string, v ...interface{}) {
-  os.Stderr.WriteString(fmt.Sprintf(format + "\n", v...))
+  os.Stderr.WriteString(fmt.Sprintf(format+"\n", v...))
 }
 
 func parseArgs() {

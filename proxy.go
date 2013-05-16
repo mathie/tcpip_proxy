@@ -1,13 +1,13 @@
 package main
 
 import (
-  "net"
   "fmt"
+  "net"
 )
 
 type Proxy struct {
-  target string
-  localPort string
+  target           string
+  localPort        string
   connectionNumber int
 }
 
@@ -26,7 +26,7 @@ func RunProxy(targetHost, targetPort, localPort string) {
 func (proxy Proxy) run() {
   fmt.Printf("Start listening on port %s and forwarding data to %s\n", proxy.localPort, proxy.target)
 
-  ln, err := net.Listen("tcp", ":" + proxy.localPort)
+  ln, err := net.Listen("tcp", ":"+proxy.localPort)
   if err != nil {
     panic(fmt.Sprintf("Unable to start listener %v", err))
   }

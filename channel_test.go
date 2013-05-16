@@ -1,8 +1,8 @@
 package main
 
 import (
-  "testing"
   "fmt"
+  "testing"
 )
 
 func setUp() {
@@ -81,8 +81,8 @@ func GoroutineSprintf(goRoutines, times int) {
     GoDoSprintf(share, signal)
   }
 
-  for i := 0; i < goRoutines; i ++ {
-    <- signal
+  for i := 0; i < goRoutines; i++ {
+    <-signal
   }
 }
 

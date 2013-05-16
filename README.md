@@ -550,6 +550,31 @@ I wonder how easy it would be to tidy that up so `setU()` and `tearDown()` were
 automatically called if defined, and I could avoid having to pass
 `t *testing.T` into each `assert`...
 
+## Formatting Code
+
+`go fmt` automatically formats your code in the proscribed Go style. And there
+is a single proscribed Go style, so you can be reasonably sure that any random
+code you pick up that's written in Go is within a command of looking the same.
+It also helps that apparently we largely agree on said style anyway. After two
+days of hacking with the code, the only things it picked me up on where:
+
+* Tabs, not spaces. OK, I can live with that one. My position on the tabs vs
+  spaces debate is "not both".
+
+* Imports should be in alphabetical order. Good call again, I was mostly being
+  lazy. It's good to note then that the ordering plain isn't important to the
+  compiler, which beats `#include` ordering games...
+
+* No spacing out string concatenation. So when I write out
+  `"[" + timestamp() + "]"`, it takes out the spaces. Less enthusiastic about
+  this one (I like my horizontal space) but OK.
+
+* Vertically aligning types in struct definitions, composite literals, etc.
+  Yeah, I normally do that too, I just forgot that one time, OK?
+
+* Not vertically aligning successive assignments. You liked me vertically
+  aligning other things, I wonder if this is an oversight?
+
 ## Things I like about go
 
 I love working with goroutines and channels for passing messages between them.

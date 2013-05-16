@@ -1,8 +1,8 @@
 package main
 
 import (
-  "net"
   "encoding/hex"
+  "net"
 )
 
 type Channel struct {
@@ -89,7 +89,7 @@ func (channel Channel) processSuccessfulPacket(bytesRead int) {
   channel.logAndWriteData(channel.buffer[:bytesRead])
   channel.log("Sent (#%d) to %v\n", channel.packetNumber, channel.toAddr())
 
-  channel.offset       += bytesRead
+  channel.offset += bytesRead
   channel.packetNumber += 1
 }
 

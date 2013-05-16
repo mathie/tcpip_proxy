@@ -1,8 +1,8 @@
 package main
 
 import (
-  "net"
   "fmt"
+  "net"
   "time"
 )
 
@@ -12,11 +12,11 @@ const (
 )
 
 type Connection struct {
-  local, remote net.Conn
+  local, remote    net.Conn
   connectionNumber int
-  target string
-  logger *Logger
-  ack chan bool
+  target           string
+  logger           *Logger
+  ack              chan bool
 }
 
 func NewConnection(local net.Conn, connectionNumber int, target string) *Connection {
@@ -103,4 +103,3 @@ func (connection Connection) to(direction int) net.Conn {
 func (connection Connection) newChannel(direction int, connectionLogger *Logger) *Channel {
   return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLogger, connection.ack)
 }
-
