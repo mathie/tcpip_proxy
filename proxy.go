@@ -1,9 +1,8 @@
-package proxy
+package main
 
 import (
   "net"
   "fmt"
-  "connection"
 )
 
 type Proxy struct {
@@ -38,7 +37,7 @@ func (proxy Proxy) run() {
 }
 
 func (proxy Proxy) processConnection(incomingConnection net.Conn) {
-  newConnection := connection.NewConnection(incomingConnection, proxy.connectionNumber, proxy.target)
+  newConnection := NewConnection(incomingConnection, proxy.connectionNumber, proxy.target)
   go newConnection.Process()
 
   proxy.connectionNumber += 1

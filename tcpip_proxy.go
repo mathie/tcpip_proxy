@@ -5,7 +5,6 @@ import (
   "fmt"
   "os"
   "runtime"
-  "proxy"
 )
 
 var (
@@ -32,5 +31,5 @@ func main() {
 
   parseArgs()
 
-  proxy.RunProxy(*host, *port, *listenPort)
+  RunProxy(*host, *port, *listenPort)
 }

@@ -1,11 +1,9 @@
-package connection
+package main
 
 import (
   "net"
   "fmt"
   "time"
-  "logger"
-  "channel"
 )
 
 const (
@@ -17,7 +15,7 @@ type Connection struct {
   local, remote net.Conn
   connectionNumber int
   target string
-  logger *logger.Logger
+  logger *Logger
   ack chan bool
 }
 
@@ -31,7 +29,7 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
 }
 
 func (connection Connection) Process() {
-  connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
+  connectionLogger := NewConnectionLogger(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
   go connectionLogger.LoggerLoop()
   defer connectionLogger.Close()
 
@@ -96,7 +94,7 @@ func (connection Connection) to(direction int) net.Conn {
   panic("Unreachable.")
 }
 
-func (connection Connection) newChannel(direction int, connectionLogger *logger.Logger) *channel.Channel {
-  return channel.NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLogger, connection.ack)
+func (connection Connection) newChannel(direction int, connectionLogger *Logger) *Channel {
+  return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLogger, connection.ack)
 }
 

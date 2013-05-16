@@ -1,22 +1,21 @@
-package channel
+package main
 
 import (
   "net"
   "encoding/hex"
-  "logger"
 )
 
 type Channel struct {
   from, to             net.Conn
-  connectionLogger     *logger.Logger
-  binaryLogger         *logger.Logger
+  connectionLogger     *Logger
+  binaryLogger         *Logger
   ack                  chan bool
   buffer               []byte
   offset, packetNumber int
 }
 
-func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
-  binaryLogger := logger.NewBinaryLogger(connectionNumber, peerAddr)
+func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *Logger, ack chan bool) *Channel {
+  binaryLogger := NewBinaryLogger(connectionNumber, peerAddr)
   return &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack, buffer: make([]byte, 10240) }
 }
 
