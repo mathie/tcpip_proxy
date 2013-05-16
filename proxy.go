@@ -35,7 +35,6 @@ func (proxy Proxy) run() {
     conn, err := ln.Accept()
     if err != nil {
       panic(fmt.Sprintf("Accept failed: %v", err))
-      continue
     }
 
     proxy.processConnection(conn)
