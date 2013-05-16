@@ -1,4 +1,4 @@
-package main
+package tcpip_proxy
 
 import (
   "encoding/hex"

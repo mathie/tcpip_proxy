@@ -38,6 +38,7 @@ import (
   "fmt"
   "os"
   "runtime"
+  "github.com/mathie/tcpip_proxy"
 )
 
 // Command line flags.
@@ -65,5 +66,5 @@ func main() {
 
   parseArgs()
 
-  RunProxy(*host, *port, *listenPort)
+  tcpip_proxy.RunProxy(*host, *port, *listenPort)
 }
