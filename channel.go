@@ -5,6 +5,11 @@ import (
   "net"
 )
 
+// Represents a unidirectional channel between two TCP sockets. A channel only
+// deals with communication in one direction, so a Connection (which
+// encapsulates a Channel in each direction) is generally sought. The channel
+// reads data from one side, logs it to a binary logger and writes it to the
+// other side.
 type Channel struct {
   from, to             net.Conn
   connectionLogger     *Logger
