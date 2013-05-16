@@ -1,8 +1,8 @@
 # TCP/IP Proxy in Go
 
-TL;DR: I took some existing code and refactored it to the way I'd structure it.
+**TL;DR: I took some existing code and refactored it to the way I'd structure it.
 However, this is the first chunk of Go I've ever touched. Please submit pull
-requests to turn it into idiomatic Go!
+requests to turn it into idiomatic Go!**
 
 For some reason, I was reading
 [The Beauty of Concurrency in Go](http://pragprog.com/magazines/2012-06/the-beauty-of-concurrency-in-go)
@@ -16,7 +16,9 @@ should be focusing the effort on learning the language. So, a nice toy example.
 Of course, I can't really get started without tooling up a bit. First of all,
 get Go installed on my (Mac) laptop with homebrew:
 
-    brew install go
+```shell
+brew install go
+```
 
 which has, between me playing yesterday and documenting it today, helpfully
 been updated to Go 1.1. So I'm going to have to re-figure what I've done to
@@ -83,18 +85,24 @@ controlled, and the import of dependencies managed as you normally would
 Anyway. If you're at the root of your workspace, you can pull in my attempt at
 the TCP proxy with the following command:
 
-    go get github.com/mathie/tcpip_proxy
+```shell
+go get github.com/mathie/tcpip_proxy
+```
 
 which will download it, and place it in
 `${GOPATH}/src/github.com/mathie/tcpip_proxy`. You can then generate the binary
 with:
 
-    go install github.com/mathie/tcpip_proxy
+```shell
+go install github.com/mathie/tcpip_proxy
+```
 
 This will compile the source (and any dependencies if there were any) build the
 binary and dump it in the `bin/` directory. You could run it as:
 
-    bin/tcpip_proxy
+```shell
+bin/tcpip_proxy
+```
 
 and it'll tell you how to get it running, but that's not terribly interesting.
 It does roughly the same as the article at the start says.
@@ -103,11 +111,15 @@ If you're actively hacking on this particular module, Go's OK with that, too.
 Inside your workspace, you can cd into the package and start editing from
 there:
 
-    cd github.com/mathie/tcpip_proxy
+```shell
+cd github.com/mathie/tcpip_proxy
+```
 
 This time when you want to build the project, you can just do:
 
-    go build
+```shell
+go build
+```
 
 and it'll dump the resulting executable in your current directory (so you'll
 want to gitignore that...). I believe that it will still resolve other
@@ -158,29 +170,35 @@ by creating a type which is just a new label for any built in type. So if the
 'data' that you're operating on can be represented as a single string, you
 could do:
 
-    type Hostname string
+```go
+type Hostname string
+```
 
 However, in my cases, I was wanting to clump together a few bits of data, so my
 type would typically be a label for a struct:
 
-    type Proxy struct {
-      target string
-      localPort string
-      connectionNumber int
-    }
+```go
+type Proxy struct {
+  target           string
+  localPort        string
+  connectionNumber int
+}
+```
 
 Idiomatically, your package will have a constructor method to build a new one
 of these things (in this case, it's trivial):
 
-    func NewProxy(targetHost, targetPort, localPort string) *Proxy {
-      target := net.JoinHostPort(targetHost, targetPort)
+```go
+func NewProxy(targetHost, targetPort, localPort string) *Proxy {
+  target := net.JoinHostPort(targetHost, targetPort)
 
-      return &Proxy{
-        target:           target,
-        localPort:        localPort,
-        connectionNumber: connectionNumber,
-      }
-    }
+  return &Proxy{
+    target:           target,
+    localPort:        localPort,
+    connectionNumber: connectionNumber,
+  }
+}
+```
 
 (I just discovered that if you're splitting a "composite literal" like that
 over several lines - say because you're writing documentation and want to keep
@@ -196,9 +214,11 @@ So now we've got a clump of data and a means to build it. How to we define
 behaviours for it? It took me about 3 reads of Effective Go to spot it, but
 this is how you define these methods:
 
-    func (proxy Proxy) Run() {
-      // Do stuff.
-    }
+```go
+func (proxy Proxy) Run() {
+  // Do stuff.
+}
+```
 
 I suppose I missed it because that looks a lot like defining return types in
 other languages. It's not, it's defining the type that the method operates on
@@ -207,8 +227,10 @@ fields of the proxy struct are available as (e.g.) `proxy.target`, etc.
 
 Calling the method on the data is as you'd expect:
 
-    proxy := NewProxy('localhost', '4000', '5000')
-    proxy.Run()
+```go
+proxy := NewProxy('localhost', '4000', '5000')
+proxy.Run()
+```
 
 Straightforward enough. So that's data and their operations. Effective Go pays
 a lot of attention to interfaces, which seem like a related topic, but I
@@ -260,12 +282,14 @@ I split bits out into separate files.
 Multiple return values from a method. In particular, this comes into its own
 for signalling errors. the typical idiom is to do something along the lines of:
 
-    bytesRead, err := channel.Read(buffer)
-    if err != nil {
-      panic(fmt.Sprintf("Channel read failed: %v", err))
-    }
+```go
+bytesRead, err := channel.Read(buffer)
+if err != nil {
+  panic(fmt.Sprintf("Channel read failed: %v", err))
+}
 
-    // Carry on
+// Carry on
+```
 
 This way we don't have to think of 'special' values of the return value
 (idiomatically -1 in C) to indicate errors, and then pass the actual error
@@ -279,22 +303,26 @@ no matter how the current scope is exited. So far, most of what I've used it
 for is to remember to close open files when I'm done with them - the same as
   I'd do with blocks in Ruby. So, in Ruby:
 
-    def cracker
-      File.open('/etc/passwd') do |f|
-        # IN UR PASSWD FILE, CRACKIN UR PASSWDS
-      end
-    end
+```ruby
+def cracker
+  File.open('/etc/passwd') do |f|
+    # IN UR PASSWD FILE, CRACKIN UR PASSWDS
+  end
+end
+```
 
 which automatically closes the file at the end of the block. The equivalent in
 Go:
 
-    func cracker() {
-      f, err := os.Open('/etc/passwd')
-      // error checking elided...
-      defer f.Close()
+```go
+func cracker() {
+  f, err := os.Open('/etc/passwd')
+  // error checking elided...
+  defer f.Close()
 
-      // IN UR PASSWD FILE, CRACKIN UR PASSWDS
-    }
+  // IN UR PASSWD FILE, CRACKIN UR PASSWDS
+}
+```
 
 The Go version can be more flexible, because it allows the caller, rather than
 the callee, to define the behaviour that happens at the end of the scope. And
