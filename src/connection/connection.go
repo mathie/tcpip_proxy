@@ -27,9 +27,32 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
     panic(fmt.Sprintf("Unable to connect to %s, %v", target, err))
   }
 
-  connection := &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
-  go connection.process()
-  return connection
+  return &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
+}
+
+func (connection Connection) Process() {
+  connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
+  go connectionLogger.LoggerLoop()
+  defer connectionLogger.Close()
+
+  started := time.Now()
+
+  connectionLogger.Log("Connected to %s.\n", connection.target)
+
+  localToRemoteChannel := connection.newChannel(LocalToRemote, connectionLogger)
+  remoteToLocalChannel := connection.newChannel(RemoteToLocal, connectionLogger)
+
+  go localToRemoteChannel.PassThrough()
+  go remoteToLocalChannel.PassThrough()
+
+  // Wait for acks from *both* the pass through channels.
+  <-connection.ack
+  <-connection.ack
+
+  finished := time.Now()
+  duration := finished.Sub(started)
+
+  connectionLogger.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
 }
 
 func (connection Connection) localAddr() net.Addr {
@@ -77,23 +100,3 @@ func (connection Connection) newChannel(direction int, connectionLogger *logger.
   return channel.NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLogger, connection.ack)
 }
 
-func (connection Connection) process() {
-  connectionLogger := logger.NewConnectionLogger(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
-  defer connectionLogger.Close()
-
-  started := time.Now()
-
-  connectionLogger.Log("Connected to %s.\n", connection.target)
-
-  connection.newChannel(LocalToRemote, connectionLogger)
-  connection.newChannel(RemoteToLocal, connectionLogger)
-
-  // Wait for acks from *both* the pass through channels.
-  <-connection.ack
-  <-connection.ack
-
-  finished := time.Now()
-  duration := finished.Sub(started)
-
-  connectionLogger.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
-}

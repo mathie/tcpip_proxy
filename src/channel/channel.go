@@ -17,10 +17,20 @@ type Channel struct {
 
 func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *logger.Logger, ack chan bool) *Channel {
   binaryLogger := logger.NewBinaryLogger(connectionNumber, peerAddr)
-  channel := &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack, buffer: make([]byte, 10240) }
+  return &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack, buffer: make([]byte, 10240) }
+}
 
-  go channel.passThrough()
-  return channel
+func (channel Channel) PassThrough() {
+  go channel.binaryLogger.LoggerLoop()
+
+  for {
+    err := channel.processPacket()
+    if err != nil {
+      break
+    }
+  }
+
+  channel.disconnect()
 }
 
 func (channel Channel) log(format string, v ...interface{}) {
@@ -57,17 +67,6 @@ func (channel Channel) fromAddr() (addr net.Addr) {
 
 func (channel Channel) toAddr() (addr net.Addr) {
   return channel.to.LocalAddr()
-}
-
-func (channel Channel) passThrough() {
-  for {
-    err := channel.processPacket()
-    if err != nil {
-      break
-    }
-  }
-
-  channel.disconnect()
 }
 
 func (channel Channel) processPacket() error {

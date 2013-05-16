@@ -21,33 +21,7 @@ func NewBinaryLogger(connectionNumber int, peerAddr net.Addr) *Logger {
   return new(binaryLoggerFilename(connectionNumber, peerAddr))
 }
 
-func (logger Logger) Log(format string, v ...interface{}) {
-  logger.LogBinary([]byte(fmt.Sprintf("[" + timestamp() + "] " + format + "\n", v...)))
-}
-
-func(logger Logger) LogBinary(bytes []byte) {
-  logger.data <- bytes
-}
-
-func (logger Logger) Close() {
-  logger.data <- []byte{}
-}
-
-func new(filename string) *Logger {
-  logger := &Logger { data: make(chan []byte), filename: filename }
-  go logger.loggerLoop()
-  return logger
-}
-
-func connectionLoggerFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
-}
-
-func binaryLoggerFilename(connectionNumber int, peerAddr net.Addr) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
-}
-
-func (logger Logger) loggerLoop() {
+func (logger Logger) LoggerLoop() {
   f, err := os.Create(logger.filename)
   if err != nil {
     panic(fmt.Sprintf("Unable to create log file, %s, %v", logger.filename, err))
@@ -64,6 +38,30 @@ func (logger Logger) loggerLoop() {
     f.Write(b)
     f.Sync()
   }
+}
+
+func (logger Logger) Log(format string, v ...interface{}) {
+  logger.LogBinary([]byte(fmt.Sprintf("[" + timestamp() + "] " + format + "\n", v...)))
+}
+
+func(logger Logger) LogBinary(bytes []byte) {
+  logger.data <- bytes
+}
+
+func (logger Logger) Close() {
+  logger.data <- []byte{}
+}
+
+func new(filename string) *Logger {
+  return &Logger { data: make(chan []byte), filename: filename }
+}
+
+func connectionLoggerFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
+}
+
+func binaryLoggerFilename(connectionNumber int, peerAddr net.Addr) string {
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
 }
 
 func timestamp() string {

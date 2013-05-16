@@ -38,7 +38,8 @@ func (proxy Proxy) run() {
 }
 
 func (proxy Proxy) processConnection(incomingConnection net.Conn) {
-  connection.NewConnection(incomingConnection, proxy.connectionNumber, proxy.target)
+  newConnection := connection.NewConnection(incomingConnection, proxy.connectionNumber, proxy.target)
+  go newConnection.Process()
 
   proxy.connectionNumber += 1
 }
