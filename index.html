@@ -272,7 +272,298 @@ considered this project to be primarily a library, but I included a trivial
 binary to demonstrate its use. I think I'd have to distribute the trivial
 binary as a separate package. Something to investigate further another time.</p>
 
-<h2>Things I like about go</h2>
+<h2>Testing</h2>
+
+<p>To round off my afternoon, I'm having a shot of the built in testing library
+for Go, having noticed that the <code>go</code> tool has built in support for compiling
+and running tests. It's pretty straightforward: normally files with the
+<code>_test.go</code> suffix aren't compiled and linked into your build. However, if you
+run:</p>
+
+<pre lang="shell"><code>go test github.com/mathie/tcpip_proxy
+</code></pre>
+
+<p>from the root of your workspace, or just:</p>
+
+<pre lang="shell"><code>go test
+</code></pre>
+
+<p>from the package itself, it builds a different binary (<code>tcpip_proxy.test</code>,
+which you'll probably want to gitignore, too) and runs it. This invokes the
+test runner which runs all your tests and reports on the results, as you'd
+expect.</p>
+
+<p>The testing framework feels a little unusual to my xUnit (OK, latterly rspec)
+eyes. There are three sorts of tests you can run: regular tests, benchmarks and
+examples. The sort of test is reflected from the test method signature.</p>
+
+<p>Examples are fairly straightforward. These methods are of the form
+<code>func ExampleFooBar()</code>. You execute some code and provide a comment at the end
+of the method to describe the expected output on stdout. Useful for checking
+the output of command line programs. For example:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">ExampleOutput</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"Hello, world"</span><span class="p">)</span>
+
+  <span class="c1">// Output:</span>
+  <span class="c1">// Hello, world</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>First thing I jumped at to test was that my program was correctly generating
+some help text to describe the command line arguments. This highlighted two
+interesting problems:</p>
+
+<ul>
+<li><p>It only appears to allow you to provide the output of <code>stdout</code> and
+<code>flag.PrintDefaults()</code> (correctly) prints to <code>stderr</code>.</p></li>
+<li><p>The test framework adds a bunch of extra flags to the running program anyway.</p></li>
+</ul><p>So I couldn't think up another useful example in this app...</p>
+
+<p>Benchmarks are really neat and I spent a little while playing around with how
+performance changes by splitting a trivial example over a number of goroutines.
+Benchmark methods have the signature <code>func BenchmarkFooBar(b *testing.B)</code>.
+Having failed to come up with a better example, I was inspired by the
+documentation to benchmark <code>fmt.Sprintf</code>:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">DoSprintf</span><span class="p">(</span><span class="nx">times</span> <span class="kt">int</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="nx">j</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">j</span> <span class="p">&lt;</span> <span class="nx">times</span><span class="p">;</span> <span class="nx">j</span><span class="o">++</span> <span class="p">{</span>
+    <span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">"This benchmark will be run %d times.\n"</span><span class="p">,</span> <span class="nx">times</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>and a wee wrapper to run it as a goroutine, signalling along a channel that it's done:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">GoDoSprintf</span><span class="p">(</span><span class="nx">times</span> <span class="kt">int</span><span class="p">,</span> <span class="nx">signal</span> <span class="kd">chan</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">go</span> <span class="kd">func</span><span class="p">(</span><span class="nx">signal</span> <span class="kd">chan</span> <span class="kt">bool</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nx">DoSprintf</span><span class="p">(</span><span class="nx">times</span><span class="p">)</span>
+
+    <span class="nx">signal</span> <span class="o">&lt;-</span> <span class="kc">true</span>
+  <span class="p">}(</span><span class="nx">signal</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>and finally a wrapper for that to 'split' the work amongst a number of
+goroutines and wait for them all to signal that they've finished before
+returning:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">GoroutineSprintf</span><span class="p">(</span><span class="nx">goRoutines</span><span class="p">,</span> <span class="nx">times</span> <span class="kt">int</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">signal</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span> <span class="kt">bool</span><span class="p">)</span>
+  <span class="nx">share</span> <span class="o">:=</span> <span class="nx">times</span> <span class="o">/</span> <span class="nx">goRoutines</span>
+
+  <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">goRoutines</span><span class="p">;</span> <span class="nx">i</span><span class="o">++</span> <span class="p">{</span>
+    <span class="nx">GoDoSprintf</span><span class="p">(</span><span class="nx">share</span><span class="p">,</span> <span class="nx">signal</span><span class="p">)</span>
+  <span class="p">}</span>
+
+  <span class="k">for</span> <span class="nx">i</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span> <span class="nx">i</span> <span class="p">&lt;</span> <span class="nx">goRoutines</span><span class="p">;</span> <span class="nx">i</span> <span class="o">++</span> <span class="p">{</span>
+    <span class="o">&lt;-</span> <span class="nx">signal</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>Straightforward enough. (Incidentally, I nicked the pattern for the goroutines
+to signal completion from the original program. I hope it's an idiomatic Go
+pattern where it's needed; I think it's quite neat.) Now, a simple benchmark to
+get a baseline without using goroutines:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">BenchmarkSprintf</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">DoSprintf</span><span class="p">(</span><span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>and a benchmark running with various numbers of goroutines:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">BenchmarkGoroutineSprintf2</span><span class="p">(</span><span class="nx">b</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">B</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">GoroutineSprintf</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nx">b</span><span class="p">.</span><span class="nx">N</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>I have permutations for this for 2, 4, 8 and 16 goroutines. It's pretty neat.
+It runs all your benchmarks, then reports on how long each operation takes
+(presumably total time / number of iterations). A few observations, though:</p>
+
+<ul>
+<li><p>It only runs the benchmarks if you specify the <code>-bench</code> flag. So to get it to
+run all your benchmarks, run <code>go test -bench .</code>.</p></li>
+<li><p>Even if you do specify the <code>-bench</code> flag, it will not run your benchmarks if
+you have any failing tests or examples, which it runs first. This makes
+sense, I suppose, but tripped me up because my example file had examples of
+failing tests, too!</p></li>
+<li><p>At first glance, goroutines didn't seem to have much performance benefit at
+all. Then I noticed the <code>-cpu</code> flag which specifies a list of <code>GOMAXPROCS</code>
+(the number of simultaneously running goroutines) values for test runs. It
+says this defaults to the 'current value of GOMAXPROCS' which in my case
+appears to be 1. It accepts a list, so specifying <code>1,2,4,8</code> means it will run
+each benchmark (and test/example too) with <code>GOMAXPROC</code> set to each of those
+values. I started to see an improvement when it was <code>&gt; 1</code>. :)</p></li>
+<li>
+<p>Not as much improvement as I'd have liked, though. It took a while to strike
+me as to why. It turns out that Go attempts to run each benchmark for
+approximately a fixed period of time (1 second by default, controlled by the
+<code>-benchtime</code> argument). This means it will repeatedly call your benchmark
+method, refining <code>b.N</code> each time so that the total runtime is about 1 second.
+(You can see this by adding <code>fmt.Printf("Running DoSprintf(%d).\n", times)</code>
+into the <code>DoSprintf</code> method.)</p>
+
+<p>I can see why this is useful, but I would like to have fixed <code>b.N</code> here so
+the benchmark was being called once, to see if the overhead of setting up the
+goroutines and channels was affecting the overall performance.</p>
+</li>
+</ul><p>So that's the benchmarks. How about regular, 'proper' tests? Well, they're
+characterised by the method signature <code>func TestFooBar(t *testing.T)</code> and
+they're the ones that are a bit 'different' to me. There doesn't seem to be the
+usual xUnit pattern of having assertions. Instead, a test is considered to have
+passed if it runs to completion without being skipped or failed. So, here's a
+passing test:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">TestPassingTest</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">result</span> <span class="o">:=</span> <span class="mi">1</span> <span class="o">+</span> <span class="mi">1</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">"1 + 1 = %d\n"</span><span class="p">,</span> <span class="nx">result</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>No assertions, nor a <code>should</code> in sight, just plain old code. That feels a bit
+odd. You can run tests with <code>go test</code> which will give you some terse output
+about whether it passes or fails and a total runtime:</p>
+
+<pre lang="shell"><code>&gt; go test
+PASS
+ok      github.com/mathie/tcpip_proxy   0.018s
+</code></pre>
+
+<p>or you can pass in the <code>-v</code> flag to get verbose output:</p>
+
+<pre lang="shell"><code>&gt; go test -v
+=== RUN TestPassingTest
+--- PASS: TestPassingTest (0.00 seconds)
+PASS
+ok      github.com/mathie/tcpip_proxy   0.017s
+</code></pre>
+
+<p>So, how do we mark a test that should be skipped (don't run the (remainder of)
+the test and note that it was skipped in the verbose output)? Like this:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">TestSkippedTest</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will be printed."</span><span class="p">)</span>
+  <span class="nx">t</span><span class="p">.</span><span class="nx">Skip</span><span class="p">(</span><span class="s">"Skipping this test for now."</span><span class="p">)</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will not be printed."</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>which verbosely outputs something like:</p>
+
+<div class="highlight"><pre><span class="o">==</span><span class="p">=</span> <span class="nx">RUN</span> <span class="nx">TestSkippedTest</span>
+<span class="nx">This</span> <span class="nx">will</span> <span class="nx">be</span> <span class="nx">printed</span><span class="p">.</span>
+<span class="o">---</span> <span class="nx">SKIP</span><span class="p">:</span> <span class="nx">TestSkippedTest</span> <span class="p">(</span><span class="mf">0.00</span> <span class="nx">seconds</span><span class="p">)</span>
+        <span class="nx">channel_test</span><span class="p">.</span><span class="k">go</span><span class="p">:</span><span class="mi">15</span><span class="p">:</span> <span class="nx">Skipping</span> <span class="nx">this</span> <span class="nx">test</span> <span class="k">for</span> <span class="nx">now</span><span class="p">.</span>
+<span class="nx">PASS</span>
+<span class="nx">ok</span>      <span class="nx">github</span><span class="p">.</span><span class="nx">com</span><span class="o">/</span><span class="nx">mathie</span><span class="o">/</span><span class="nx">tcpip_proxy</span>   <span class="mf">0.017</span><span class="nx">s</span>
+</pre></div>
+
+<p>As you can see, skipped tests are considered to be passing (if you don't ask
+for the verbose output, you'll get no notification that there are any skipped
+tests at all). So, how about failing tests?</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">TestImmediatelyFailingTest</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will be printed."</span><span class="p">)</span>
+  <span class="nx">t</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="s">"This test will fail now and not run to completion"</span><span class="p">)</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will not be printed."</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>The test will fail and will immediately terminate the test method (I wonder if
+it uses <code>panic</code> and <code>recover</code> under the covers? <code>defer</code> still works.) This
+seems like the natural behaviour, but there is an alternative:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">TestFailingTest</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will be printed."</span><span class="p">)</span>
+  <span class="nx">t</span><span class="p">.</span><span class="nx">Error</span><span class="p">(</span><span class="s">"This test will ultimately fail, but will continue to completion"</span><span class="p">)</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"This will also be printed."</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>which marks the test as failed, but still continues running it. I suppose that
+would be useful if there's some state you need to restore after the test
+anyway, but that seems like a prime use of <code>defer</code>... Either way, the verbose
+test output looks like:</p>
+
+<pre lang="shell"><code>=== RUN TestFailingTest
+This will be printed.
+This will also be printed.
+--- FAIL: TestFailingTest (0.00 seconds)
+        channel_test.go:21: This test will ultimately fail, but will continue to completion
+=== RUN TestImmediatelyFailingTest
+This will be printed.
+--- FAIL: TestImmediatelyFailingTest (0.00 seconds)
+        channel_test.go:28: This test will fail now and not run to completion
+FAIL
+exit status 1
+FAIL    github.com/mathie/tcpip_proxy   0.018s
+</code></pre>
+
+<p>Fair enough. I'll endeavour to continue mucking around with the test framework
+but so far it's feeling a little "low level", like it's the tools that you'd
+use to write a test framework rather than the framework you'd use. I suppose
+everybody's testing needs are different (cf the sheer number of testing
+frameworks in the Ruby community). I think I'd be happy with something along
+the lines of the following:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">setUp</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"Shared test setup for this module."</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nx">tearDown</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"Shared test teardown for this module."</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nx">assert</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">,</span> <span class="nx">value</span> <span class="kt">bool</span><span class="p">,</span> <span class="nx">message</span> <span class="kt">string</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">if</span> <span class="p">!</span><span class="nx">value</span> <span class="p">{</span>
+    <span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"Assertion failed: %v should have been true but was not: %v"</span><span class="p">,</span> <span class="nx">value</span><span class="p">,</span> <span class="nx">message</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nx">TestPassingTestWithAssert</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">setUp</span><span class="p">()</span>
+  <span class="k">defer</span> <span class="nx">tearDown</span><span class="p">()</span>
+
+  <span class="nx">assert</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span> <span class="kc">true</span><span class="p">,</span> <span class="s">"True is not true!"</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span> <span class="nx">TestFailingTestWithAssert</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">setUp</span><span class="p">()</span>
+  <span class="k">defer</span> <span class="nx">tearDown</span><span class="p">()</span>
+
+  <span class="nx">assert</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span> <span class="kc">false</span><span class="p">,</span> <span class="s">"False is not true!"</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>I wonder how easy it would be to tidy that up so <code>setU()</code> and <code>tearDown()</code> were
+automatically called if defined, and I could avoid having to pass
+<code>t *testing.T</code> into each <code>assert</code>...</p>
+
+<h2>Formatting Code</h2>
+
+<p><code>go fmt</code> automatically formats your code in the proscribed Go style. And there
+is a single proscribed Go style, so you can be reasonably sure that any random
+code you pick up that's written in Go is within a command of looking the same.
+It also helps that apparently we largely agree on said style anyway. After two
+days of hacking with the code, the only things it picked me up on where:</p>
+
+<ul>
+<li><p>Tabs, not spaces. OK, I can live with that one. My position on the tabs vs
+spaces debate is "not both".</p></li>
+<li><p>Imports should be in alphabetical order. Good call again, I was mostly being
+lazy. It's good to note then that the ordering plain isn't important to the
+compiler, which beats <code>#include</code> ordering games...</p></li>
+<li><p>No spacing out string concatenation. So when I write out
+<code>"[" + timestamp() + "]"</code>, it takes out the spaces. Less enthusiastic about
+this one (I like my horizontal space) but OK.</p></li>
+<li><p>Vertically aligning types in struct definitions, composite literals, etc.
+Yeah, I normally do that too, I just forgot that one time, OK?</p></li>
+<li><p>Not vertically aligning successive assignments. You liked me vertically
+aligning other things, I wonder if this is an oversight?</p></li>
+</ul><h2>Things I like about go</h2>
 
 <p>I love working with goroutines and channels for passing messages between them.
 It feels like a really natural way to think about software development. And, of
@@ -335,6 +626,10 @@ Go:</p>
 <p>The Go version can be more flexible, because it allows the caller, rather than
 the callee, to define the behaviour that happens at the end of the scope. And
 it avoids an extra level of indentation, which pleases me.</p>
+
+<p>Despite its unusual (to me) behaviour, I'm getting on rather well with the test
+suite. We're definitely going to spend some more time together. Although it
+might be time spent ... enhancing it the way I'd like to use it. :)</p>
 
 <h2>Conclusion</h2>
 
