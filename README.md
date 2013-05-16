@@ -239,6 +239,67 @@ considered this project to be primarily a library, but I included a trivial
 binary to demonstrate its use. I think I'd have to distribute the trivial
 binary as a separate package. Something to investigate further another time.
 
+## Things I like about go
+
+I love working with goroutines and channels for passing messages between them.
+It feels like a really natural way to think about software development. And, of
+course, it can allow the program to scale up onto multiple cores on your
+computer, run goroutines concurrently and get things done faster. I'm sure
+there are still plenty of ways to trip myself up, but I managed to write a
+trivial program that I observed running with 13 separate threads and not once
+have to think about the complexities of concurrent programming. That's got to
+be a win.
+
+I liked that the compiler makes me keep my imports in check, so that I can
+clearly see dependencies. The number of times I've looked at the myriad of
+`require 'foo'` lines in a ruby file that's been around for a few years and
+wondered if they're all necessary. Or, worse, with Rails' autoloader, not even
+knowing what a file's dependencies really are! This was particularly awesome as
+I split bits out into separate files.
+
+Multiple return values from a method. In particular, this comes into its own
+for signalling errors. the typical idiom is to do something along the lines of:
+
+    bytesRead, err := channel.Read(buffer)
+    if err != nil {
+      panic(fmt.Sprintf("Channel read failed: %v", err))
+    }
+
+    // Carry on
+
+This way we don't have to think of 'special' values of the return value
+(idiomatically -1 in C) to indicate errors, and then pass the actual error
+status out of band. I also like the pace of "call a method, check for errors,
+call a method, check for errors". I always liked that style in C; apart from
+anything else, it's clear to see when errors are, and aren't, being checked
+without jumping out of the current context.
+
+`defer` is neat. It schedules a method to run at the end of the current scope,
+no matter how the current scope is exited. So far, most of what I've used it
+for is to remember to close open files when I'm done with them - the same as
+  I'd do with blocks in Ruby. So, in Ruby:
+
+    def cracker
+      File.open('/etc/passwd') do |f|
+        # IN UR PASSWD FILE, CRACKIN UR PASSWDS
+      end
+    end
+
+which automatically closes the file at the end of the block. The equivalent in
+Go:
+
+    func cracker() {
+      f, err := os.Open('/etc/passwd')
+      // error checking elided...
+      defer f.Close()
+
+      // IN UR PASSWD FILE, CRACKIN UR PASSWDS
+    }
+
+The Go version can be more flexible, because it allows the caller, rather than
+the callee, to define the behaviour that happens at the end of the scope. And
+it avoids an extra level of indentation, which pleases me.
+
 ## Conclusion
 
 I've run out of things to say. I've quite enjoyed this wee exercise.
