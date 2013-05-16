@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <title>TCP/IP Proxy in Go by mathie</title>
+  </head>
+
+  <body>
+    <header>
+      <div class="inner">
+        <h1>TCP/IP Proxy in Go</h1>
+        <h2>Learning Go one refactoring at a time</h2>
+        <a href="https://github.com/mathie/tcpip_proxy" class="button"><small>View project on</small>GitHub</a>
+      </div>
+    </header>
+
+    <div id="content-wrapper">
+      <div class="inner clearfix">
+        <section id="main-content">
+          <h1>TCP/IP Proxy in Go</h1>
+
+<p><strong>TL;DR: I took some existing code and refactored it to the way I'd structure it.
+However, this is the first chunk of Go I've ever touched. Please submit pull
+requests to turn it into idiomatic Go!</strong></p>
+
+<p>For some reason, I was reading
+<a href="http://pragprog.com/magazines/2012-06/the-beauty-of-concurrency-in-go">The Beauty of Concurrency in Go</a>
+yesterday morning and decided to spend 20 minutes typing out the code to see
+how it felt in reality. I've been meaning to try Go for a while now, but every
+time I aim to give it a shot, I wind up picking too big a challenge, where I
+should be focusing the effort on learning the language. So, a nice toy example.</p>
+
+<h2>Development Environment</h2>
+
+<p>Of course, I can't really get started without tooling up a bit. First of all,
+get Go installed on my (Mac) laptop with homebrew:</p>
+
+<pre lang="shell"><code>brew install go
+</code></pre>
+
+<p>which has, between me playing yesterday and documenting it today, helpfully
+been updated to Go 1.1. So I'm going to have to re-figure what I've done to
+make it work with 1.1! Which makes documenting where I started and how I got to
+here a little tricky, so let's focus on how to get the environment up and
+running.</p>
+
+<p>The <code>go</code> tool relies on a couple of environment variables to help it figure out
+where to find things and where to put things:</p>
+
+<ul>
+<li><p><code>GOROOT</code> which is the root of the Go installation. If you're using homebrew,
+you can safely add <code>export GOROOT="$(brew --prefix go)"</code> to your bash/zsh
+profile and you're good to go.</p></li>
+<li><p><code>GOPATH</code> which points to your local Go workspace. This is much like a
+workspace in Eclipse, as I understand it, in that it's one place to keep all
+your source code and their dependencies. It may well be sensible to have a
+workspace per project or per 'role', but for now I'm just dumping everything
+into a single workspace, so I've added
+<code>export GOPATH="${HOME}/Development/Go"</code> to my <code>~/.zshenv</code> for now.</p></li>
+</ul><p>So, there we have it, a working Go environment. Wait, there's just one extra
+thing: editor support. I drink the vim koolaid, and there's a vim plugin
+distributed with Go (if you've got the homebrew version installed, you'll find
+it at <code>/usr/local/opt/go/misc/vim</code>). Add that plugin to vim in your preferred
+manner. I added a couple of extra files:</p>
+
+<ul>
+<li><p><a href="https://github.com/mathie/.vim/blob/master/compiler/go.vim"><code>compiler/go.vim</code></a>
+which sets the correct <code>makeprg</code> and <code>errorformat</code> when editing go programs;
+and</p></li>
+<li><p><a href="https://github.com/mathie/.vim/blob/master/ftplugin/go/compiler.vim"><code>ftplugin/go/compiler.vim</code></a>
+which tells it to use the go compiler as defined above when editing go files.</p></li>
+</ul><p>Now when I run <code>:make</code> et al in vim while editing a go file, it does some
+approximation of the right thing.</p>
+
+<h2>A note about workspaces</h2>
+
+<p>I only discovered Go's workspaces this morning when I tried to build my code
+against the newly installed Go 1.1 and it didn't work. The setup and layout of
+workspaces is covered in detail in
+<a href="http://golang.org/doc/code.html">How to write Go code</a>, so here's the short
+version.</p>
+
+<p>There are three directories inside your workspace:</p>
+
+<ul>
+<li><p><code>bin</code> where executable commands are placed after they've been built;</p></li>
+<li><p><code>pkg</code> where static libraries of your dependencies are placed after they've
+been built; and</p></li>
+<li><p><code>src</code> which contains the source code to your application and its dependent
+libraries (in other words, where all the action happens).</p></li>
+</ul><p>I haven't played around with dependencies much yet, but it sounds like, while
+Go will happily download and install dependencies on your behalf, you don't
+have much control over the upstream versions of these dependencies. So I'm
+going to revise my previous statement about workspace-per-whatever and say you
+should have a workspace per project. That workspace should be version
+controlled, and the import of dependencies managed as you normally would
+(submodules, subtree merge, whatever).</p>
+
+<p>Anyway. If you're at the root of your workspace, you can pull in my attempt at
+the TCP proxy with the following command:</p>
+
+<pre lang="shell"><code>go get github.com/mathie/tcpip_proxy
+</code></pre>
+
+<p>which will download it, and place it in
+<code>${GOPATH}/src/github.com/mathie/tcpip_proxy</code>. You can then generate the binary
+with:</p>
+
+<pre lang="shell"><code>go install github.com/mathie/tcpip_proxy
+</code></pre>
+
+<p>This will compile the source (and any dependencies if there were any) build the
+binary and dump it in the <code>bin/</code> directory. You could run it as:</p>
+
+<pre lang="shell"><code>bin/tcpip_proxy
+</code></pre>
+
+<p>and it'll tell you how to get it running, but that's not terribly interesting.
+It does roughly the same as the article at the start says.</p>
+
+<p>If you're actively hacking on this particular module, Go's OK with that, too.
+Inside your workspace, you can cd into the package and start editing from
+there:</p>
+
+<pre lang="shell"><code>cd github.com/mathie/tcpip_proxy
+</code></pre>
+
+<p>This time when you want to build the project, you can just do:</p>
+
+<pre lang="shell"><code>go build
+</code></pre>
+
+<p>and it'll dump the resulting executable in your current directory (so you'll
+want to gitignore that...). I believe that it will still resolve other
+dependencies from your workspace and the global go root.</p>
+
+<h2>What I actually did</h2>
+
+<p>So after all that. This was meant to be a 20 minute exercise, typing/copying
+the code from the article to get a feel for it, running it and tweaking
+slightly. What it turned into was a day long excursion into the world of Go,
+attempting to refactor the program into a more sensible (to me) structure,
+while sticking with Go's idioms.</p>
+
+<p>Most of what I did was to break the code up into smaller functions, because
+that's how I think. But I also tried to divide it into clumps of data and the
+operations performed on that data (which sounds an awful lot like objects).
+Here's the four objects I extracted:</p>
+
+<ul>
+<li><p><a href="logger.go"><code>Logger</code></a> which encapsulates the goroutine which takes log
+messages and dumps them out to the appropriate log file.</p></li>
+<li><p><a href="channel.go"><code>Channel</code></a> which encapsulates a unidirectional channel between
+two sockets, logging and forwarding packets, in another goroutine.</p></li>
+<li><p><a href="connection.go"><code>Connection</code></a> which combines two channels - one in each
+direction - plus an overall logger for general connection information.</p></li>
+<li><p><a href="proxy.go"><code>Proxy</code></a> which listens for new connections, then kicks off a new
+connection goroutine to handle each of them.</p></li>
+</ul><p>There's also the main program itself in <a href="tcpip_proxy.go">tcpip_proxy.go</a> which
+parses command line arguments, then kicks off a <code>Proxy</code> to make it all work.
+It's just wiring.</p>
+
+<p>Initially, I split off all these objects into separate packages, naming the
+package after the single class inside, and following the convention for
+exported names. (The convention is that names beginning with an uppercase
+letter are exported from the package; those beginning with a lower case letter
+aren't.) However, after switching to the workspace setup in Go 1.1, I've moved
+them all back to a single package. I'm still a little unsure about what 'size'
+a package should be, how granular things should be, what I should be exporting
+from packages and suchlike. Something I'm sure will start to gel as I write
+larger code bases.</p>
+
+<p>So, yes, most of what I learned was how to clump together related bits of data,
+and how to define behaviours on that data. In terms of the data, you define it
+by creating a type which is just a new label for any built in type. So if the
+'data' that you're operating on can be represented as a single string, you
+could do:</p>
+
+<div class="highlight"><pre><span class="kd">type</span> <span class="nx">Hostname</span> <span class="kt">string</span>
+</pre></div>
+
+<p>However, in my cases, I was wanting to clump together a few bits of data, so my
+type would typically be a label for a struct:</p>
+
+<div class="highlight"><pre><span class="kd">type</span> <span class="nx">Proxy</span> <span class="kd">struct</span> <span class="p">{</span>
+  <span class="nx">target</span>           <span class="kt">string</span>
+  <span class="nx">localPort</span>        <span class="kt">string</span>
+  <span class="nx">connectionNumber</span> <span class="kt">int</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>Idiomatically, your package will have a constructor method to build a new one
+of these things (in this case, it's trivial):</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">NewProxy</span><span class="p">(</span><span class="nx">targetHost</span><span class="p">,</span> <span class="nx">targetPort</span><span class="p">,</span> <span class="nx">localPort</span> <span class="kt">string</span><span class="p">)</span> <span class="o">*</span><span class="nx">Proxy</span> <span class="p">{</span>
+  <span class="nx">target</span> <span class="o">:=</span> <span class="nx">net</span><span class="p">.</span><span class="nx">JoinHostPort</span><span class="p">(</span><span class="nx">targetHost</span><span class="p">,</span> <span class="nx">targetPort</span><span class="p">)</span>
+
+  <span class="k">return</span> <span class="o">&amp;</span><span class="nx">Proxy</span><span class="p">{</span>
+    <span class="nx">target</span><span class="p">:</span>           <span class="nx">target</span><span class="p">,</span>
+    <span class="nx">localPort</span><span class="p">:</span>        <span class="nx">localPort</span><span class="p">,</span>
+    <span class="nx">connectionNumber</span><span class="p">:</span> <span class="nx">connectionNumber</span><span class="p">,</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>(I just discovered that if you're splitting a "composite literal" like that
+over several lines - say because you're writing documentation and want to keep
+the line lengths short - then the final line must have a trailing <code>,</code> too. I
+also discovered that error messages from the Go compiler are generally very
+helpful.)</p>
+
+<p>The <a href="http://golang.org/doc/effective_go.html">Effective Go</a> documentation also
+says that if the constructor is constructing something that's obvious from the
+package name, just call it <code>New</code>.</p>
+
+<p>So now we've got a clump of data and a means to build it. How to we define
+behaviours for it? It took me about 3 reads of Effective Go to spot it, but
+this is how you define these methods:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="p">(</span><span class="nx">proxy</span> <span class="nx">Proxy</span><span class="p">)</span> <span class="nx">Run</span><span class="p">()</span> <span class="p">{</span>
+  <span class="c1">// Do stuff.</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>I suppose I missed it because that looks a lot like defining return types in
+other languages. It's not, it's defining the type that the method operates on
+and giving it a name to access it inside the method. So, inside the method, the
+fields of the proxy struct are available as (e.g.) <code>proxy.target</code>, etc.</p>
+
+<p>Calling the method on the data is as you'd expect:</p>
+
+<div class="highlight"><pre><span class="nx">proxy</span> <span class="o">:=</span> <span class="nx">NewProxy</span><span class="p">(</span><span class="s">"localhost"</span><span class="p">,</span> <span class="s">"4000"</span><span class="p">,</span> <span class="s">"5000"</span><span class="p">)</span>
+<span class="nx">proxy</span><span class="p">.</span><span class="nx">Run</span><span class="p">()</span>
+</pre></div>
+
+<p>Straightforward enough. So that's data and their operations. Effective Go pays
+a lot of attention to interfaces, which seem like a related topic, but I
+couldn't see any way to apply them here, so I, well, haven't.</p>
+
+<h2>Packages</h2>
+
+<p>As I said above, I had split out all these objects into separate packages when
+I was working with Go 1.0.3 yesterday, but have coalesced it back into a single
+package now. As far as I can tell, a package is one of two things:</p>
+
+<ul>
+<li><p>A library which other code depends upon which, when installed will produce a
+static library in <code>${GOPATH}/pkg</code>. In this case, start out each of your files
+in the package with the 'short' package name (conventionally, the name of the
+repo it sits in). So, if I was distributing this project as a library, I'd be
+sticking <code>package tcpip_proxy</code> at the head of every file.</p></li>
+<li><p>And if it's not a library, it's a program which installs a binary into
+<code>${GOPATH}/bin</code>. In this case, start out each of the files in the package
+with <code>package main</code>. This makes it a program. I haven't tried, but it seems
+reasonable that you can have multiple programs (packages whose name is
+<code>package main</code>) in a single workspace which are distinct instead by their
+full import path.</p></li>
+</ul><p>The one thing I find odd about this: it doesn't seem possible to distribute a
+single package which can be both a library and a binary. Say, for example, I
+considered this project to be primarily a library, but I included a trivial
+binary to demonstrate its use. I think I'd have to distribute the trivial
+binary as a separate package. Something to investigate further another time.</p>
+
+<h2>Things I like about go</h2>
+
+<p>I love working with goroutines and channels for passing messages between them.
+It feels like a really natural way to think about software development. And, of
+course, it can allow the program to scale up onto multiple cores on your
+computer, run goroutines concurrently and get things done faster. I'm sure
+there are still plenty of ways to trip myself up, but I managed to write a
+trivial program that I observed running with 13 separate threads and not once
+have to think about the complexities of concurrent programming. That's got to
+be a win.</p>
+
+<p>I liked that the compiler makes me keep my imports in check, so that I can
+clearly see dependencies. The number of times I've looked at the myriad of
+<code>require 'foo'</code> lines in a ruby file that's been around for a few years and
+wondered if they're all necessary. Or, worse, with Rails' autoloader, not even
+knowing what a file's dependencies really are! This was particularly awesome as
+I split bits out into separate files.</p>
+
+<p>Multiple return values from a method. In particular, this comes into its own
+for signalling errors. the typical idiom is to do something along the lines of:</p>
+
+<div class="highlight"><pre><span class="nx">bytesRead</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">channel</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="nx">buffer</span><span class="p">)</span>
+<span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+  <span class="nb">panic</span><span class="p">(</span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">"Channel read failed: %v"</span><span class="p">,</span> <span class="nx">err</span><span class="p">))</span>
+<span class="p">}</span>
+
+<span class="c1">// Carry on</span>
+</pre></div>
+
+<p>This way we don't have to think of 'special' values of the return value
+(idiomatically -1 in C) to indicate errors, and then pass the actual error
+status out of band. I also like the pace of "call a method, check for errors,
+call a method, check for errors". I always liked that style in C; apart from
+anything else, it's clear to see when errors are, and aren't, being checked
+without jumping out of the current context.</p>
+
+<p><code>defer</code> is neat. It schedules a method to run at the end of the current scope,
+no matter how the current scope is exited. So far, most of what I've used it
+for is to remember to close open files when I'm done with them - the same as
+  I'd do with blocks in Ruby. So, in Ruby:</p>
+
+<div class="highlight"><pre><span class="k">def</span> <span class="nf">cracker</span>
+  <span class="no">File</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s1">'/etc/passwd'</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">f</span><span class="o">|</span>
+    <span class="c1"># IN UR PASSWD FILE, CRACKIN UR PASSWDS</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+
+<p>which automatically closes the file at the end of the block. The equivalent in
+Go:</p>
+
+<div class="highlight"><pre><span class="kd">func</span> <span class="nx">cracker</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">f</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">os</span><span class="p">.</span><span class="nx">Open</span><span class="p">(</span><span class="s">"/etc/passwd"</span><span class="p">)</span>
+  <span class="c1">// error checking elided...</span>
+  <span class="k">defer</span> <span class="nx">f</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+
+  <span class="c1">// IN UR PASSWD FILE, CRACKIN UR PASSWDS</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>The Go version can be more flexible, because it allows the caller, rather than
+the callee, to define the behaviour that happens at the end of the scope. And
+it avoids an extra level of indentation, which pleases me.</p>
+
+<h2>Conclusion</h2>
+
+<p>I've run out of things to say. I've quite enjoyed this wee exercise.
+Refactoring existing code has been an excellent way to learn a bit more about
+Go - after all, by definition refactoring is not about introducing new
+behaviour so I wasn't having to think about the problem domain. I could just
+focus on finding out about bits of Go and use them to morph the program in some
+way.</p>
+
+<p>I'd be really interested in feedback. This is the first chunk of Go I've
+written. It was all written while staring at Effective Go, but I'm sure it's
+not yet idiomatic Go. (I've seen code from experienced developers new to Ruby
+writing idiomatically in their preferred language while using Ruby's keywords.
+I have no doubt that this code will smell of Ruby being written in Go syntax!)</p>
+
+<p>Pull requests to turn it into idiomatic Go would be much appreciated.</p>
+        </section>
+
+        <aside id="sidebar">
+          <a href="https://github.com/mathie/tcpip_proxy/zipball/master" class="button">
+            <small>Download</small>
+            .zip file
+          </a>
+          <a href="https://github.com/mathie/tcpip_proxy/tarball/master" class="button">
+            <small>Download</small>
+            .tar.gz file
+          </a>
+
+          <p class="repo-owner"><a href="https://github.com/mathie/tcpip_proxy"></a> is maintained by <a href="https://github.com/mathie">mathie</a>.</p>
+
+          <p>This page was generated by <a href="pages.github.com">GitHub Pages</a> using the Architect theme by <a href="http://twitter.com/jasonlong">Jason Long</a>.</p>
+        </aside>
+      </div>
+    </div>
+
+  
+  </body>
+</html>
