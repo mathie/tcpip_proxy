@@ -261,6 +261,295 @@ considered this project to be primarily a library, but I included a trivial
 binary to demonstrate its use. I think I'd have to distribute the trivial
 binary as a separate package. Something to investigate further another time.
 
+## Testing
+
+To round off my afternoon, I'm having a shot of the built in testing library
+for Go, having noticed that the `go` tool has built in support for compiling
+and running tests. It's pretty straightforward: normally files with the
+`_test.go` suffix aren't compiled and linked into your build. However, if you
+run:
+
+```shell
+go test github.com/mathie/tcpip_proxy
+```
+
+from the root of your workspace, or just:
+
+```shell
+go test
+```
+
+from the package itself, it builds a different binary (`tcpip_proxy.test`,
+which you'll probably want to gitignore, too) and runs it. This invokes the
+test runner which runs all your tests and reports on the results, as you'd
+expect.
+
+The testing framework feels a little unusual to my xUnit (OK, latterly rspec)
+eyes. There are three sorts of tests you can run: regular tests, benchmarks and
+examples. The sort of test is reflected from the test method signature.
+
+Examples are fairly straightforward. These methods are of the form
+`func ExampleFooBar()`. You execute some code and provide a comment at the end
+of the method to describe the expected output on stdout. Useful for checking
+the output of command line programs. For example:
+
+```go
+func ExampleOutput() {
+  fmt.Println("Hello, world")
+
+  // Output:
+  // Hello, world
+}
+```
+
+First thing I jumped at to test was that my program was correctly generating
+some help text to describe the command line arguments. This highlighted two
+interesting problems:
+
+* It only appears to allow you to provide the output of `stdout` and
+  `flag.PrintDefaults()` (correctly) prints to `stderr`.
+
+* The test framework adds a bunch of extra flags to the running program anyway.
+
+So I couldn't think up another useful example in this app...
+
+Benchmarks are really neat and I spent a little while playing around with how
+performance changes by splitting a trivial example over a number of goroutines.
+Benchmark methods have the signature `func BenchmarkFooBar(b *testing.B)`.
+Having failed to come up with a better example, I was inspired by the
+documentation to benchmark `fmt.Sprintf`:
+
+```go
+func DoSprintf(times int) {
+  for j := 0; j < times; j++ {
+    fmt.Sprintf("This benchmark will be run %d times.\n", times)
+  }
+}
+```
+
+and a wee wrapper to run it as a goroutine, signalling along a channel that it's done:
+
+```go
+func GoDoSprintf(times int, signal chan bool) {
+  go func(signal chan bool) {
+    DoSprintf(times)
+
+    signal <- true
+  }(signal)
+}
+```
+
+and finally a wrapper for that to 'split' the work amongst a number of
+goroutines and wait for them all to signal that they've finished before
+returning:
+
+```go
+func GoroutineSprintf(goRoutines, times int) {
+  signal := make(chan bool)
+  share := times / goRoutines
+
+  for i := 0; i < goRoutines; i++ {
+    GoDoSprintf(share, signal)
+  }
+
+  for i := 0; i < goRoutines; i ++ {
+    <- signal
+  }
+}
+```
+
+Straightforward enough. (Incidentally, I nicked the pattern for the goroutines
+to signal completion from the original program. I hope it's an idiomatic Go
+pattern where it's needed; I think it's quite neat.) Now, a simple benchmark to
+get a baseline without using goroutines:
+
+```go
+func BenchmarkSprintf(b *testing.B) {
+  DoSprintf(b.N)
+}
+```
+
+and a benchmark running with various numbers of goroutines:
+
+```go
+func BenchmarkGoroutineSprintf2(b *testing.B) {
+  GoroutineSprintf(2, b.N)
+}
+```
+
+I have permutations for this for 2, 4, 8 and 16 goroutines. It's pretty neat.
+It runs all your benchmarks, then reports on how long each operation takes
+(presumably total time / number of iterations). A few observations, though:
+
+* It only runs the benchmarks if you specify the `-bench` flag. So to get it to
+  run all your benchmarks, run `go test -bench .`.
+
+* Even if you do specify the `-bench` flag, it will not run your benchmarks if
+  you have any failing tests or examples, which it runs first. This makes
+  sense, I suppose, but tripped me up because my example file had examples of
+  failing tests, too!
+
+* At first glance, goroutines didn't seem to have much performance benefit at
+  all. Then I noticed the `-cpu` flag which specifies a list of `GOMAXPROCS`
+  (the number of simultaneously running goroutines) values for test runs. It
+  says this defaults to the 'current value of GOMAXPROCS' which in my case
+  appears to be 1. It accepts a list, so specifying `1,2,4,8` means it will run
+  each benchmark (and test/example too) with `GOMAXPROC` set to each of those
+  values. I started to see an improvement when it was `> 1`. :)
+
+* Not as much improvement as I'd have liked, though. It took a while to strike
+  me as to why. It turns out that Go attempts to run each benchmark for
+  approximately a fixed period of time (1 second by default, controlled by the
+  `-benchtime` argument). This means it will repeatedly call your benchmark
+  method, refining `b.N` each time so that the total runtime is about 1 second.
+  (You can see this by adding `fmt.Printf("Running DoSprintf(%d).\n", times)`
+  into the `DoSprintf` method.)
+
+  I can see why this is useful, but I would like to have fixed `b.N` here so
+  the benchmark was being called once, to see if the overhead of setting up the
+  goroutines and channels was affecting the overall performance.
+
+So that's the benchmarks. How about regular, 'proper' tests? Well, they're
+characterised by the method signature `func TestFooBar(t *testing.T)` and
+they're the ones that are a bit 'different' to me. There doesn't seem to be the
+usual xUnit pattern of having assertions. Instead, a test is considered to have
+passed if it runs to completion without being skipped or failed. So, here's a
+passing test:
+
+```go
+func TestPassingTest(t *testing.T) {
+  result := 1 + 1
+  fmt.Sprintf("1 + 1 = %d\n", result)
+}
+```
+
+No assertions, nor a `should` in sight, just plain old code. That feels a bit
+odd. You can run tests with `go test` which will give you some terse output
+about whether it passes or fails and a total runtime:
+
+```shell
+> go test
+PASS
+ok      github.com/mathie/tcpip_proxy   0.018s
+```
+
+or you can pass in the `-v` flag to get verbose output:
+
+```shell
+> go test -v
+=== RUN TestPassingTest
+--- PASS: TestPassingTest (0.00 seconds)
+PASS
+ok      github.com/mathie/tcpip_proxy   0.017s
+```
+
+So, how do we mark a test that should be skipped (don't run the (remainder of)
+the test and note that it was skipped in the verbose output)? Like this:
+
+```go
+func TestSkippedTest(t *testing.T) {
+  fmt.Println("This will be printed.")
+  t.Skip("Skipping this test for now.")
+  fmt.Println("This will not be printed.")
+}
+```
+
+which verbosely outputs something like:
+
+```go
+=== RUN TestSkippedTest
+This will be printed.
+--- SKIP: TestSkippedTest (0.00 seconds)
+        channel_test.go:15: Skipping this test for now.
+PASS
+ok      github.com/mathie/tcpip_proxy   0.017s
+```
+
+As you can see, skipped tests are considered to be passing (if you don't ask
+for the verbose output, you'll get no notification that there are any skipped
+tests at all). So, how about failing tests?
+
+```go
+func TestImmediatelyFailingTest(t *testing.T) {
+  fmt.Println("This will be printed.")
+  t.Fatal("This test will fail now and not run to completion")
+  fmt.Println("This will not be printed.")
+}
+```
+
+The test will fail and will immediately terminate the test method (I wonder if
+it uses `panic` and `recover` under the covers? `defer` still works.) This
+seems like the natural behaviour, but there is an alternative:
+
+```go
+func TestFailingTest(t *testing.T) {
+  fmt.Println("This will be printed.")
+  t.Error("This test will ultimately fail, but will continue to completion")
+  fmt.Println("This will also be printed.")
+}
+```
+
+which marks the test as failed, but still continues running it. I suppose that
+would be useful if there's some state you need to restore after the test
+anyway, but that seems like a prime use of `defer`... Either way, the verbose
+test output looks like:
+
+```shell
+=== RUN TestFailingTest
+This will be printed.
+This will also be printed.
+--- FAIL: TestFailingTest (0.00 seconds)
+        channel_test.go:21: This test will ultimately fail, but will continue to completion
+=== RUN TestImmediatelyFailingTest
+This will be printed.
+--- FAIL: TestImmediatelyFailingTest (0.00 seconds)
+        channel_test.go:28: This test will fail now and not run to completion
+FAIL
+exit status 1
+FAIL    github.com/mathie/tcpip_proxy   0.018s
+```
+
+Fair enough. I'll endeavour to continue mucking around with the test framework
+but so far it's feeling a little "low level", like it's the tools that you'd
+use to write a test framework rather than the framework you'd use. I suppose
+everybody's testing needs are different (cf the sheer number of testing
+frameworks in the Ruby community). I think I'd be happy with something along
+the lines of the following:
+
+```go
+func setUp() {
+  fmt.Println("Shared test setup for this module.")
+}
+
+func tearDown() {
+  fmt.Println("Shared test teardown for this module.")
+}
+
+func assert(t *testing.T, value bool, message string) {
+  if !value {
+    t.Fatalf("Assertion failed: %v should have been true but was not: %v", value, message)
+  }
+}
+
+func TestPassingTestWithAssert(t *testing.T) {
+  setUp()
+  defer tearDown()
+
+  assert(t, true, "True is not true!")
+}
+
+func TestFailingTestWithAssert(t *testing.T) {
+  setUp()
+  defer tearDown()
+
+  assert(t, false, "False is not true!")
+}
+```
+
+I wonder how easy it would be to tidy that up so `setU()` and `tearDown()` were
+automatically called if defined, and I could avoid having to pass
+`t *testing.T` into each `assert`...
+
 ## Things I like about go
 
 I love working with goroutines and channels for passing messages between them.
@@ -327,6 +616,10 @@ func cracker() {
 The Go version can be more flexible, because it allows the caller, rather than
 the callee, to define the behaviour that happens at the end of the scope. And
 it avoids an extra level of indentation, which pleases me.
+
+Despite its unusual (to me) behaviour, I'm getting on rather well with the test
+suite. We're definitely going to spend some more time together. Although it
+might be time spent ... enhancing it the way I'd like to use it. :)
 
 ## Conclusion
 

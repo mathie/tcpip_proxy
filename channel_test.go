@@ -5,30 +5,61 @@ import (
   "fmt"
 )
 
+func setUp() {
+  fmt.Println("Shared test setup for this module.")
+}
+
+func tearDown() {
+  fmt.Println("Shared test teardown for this module.")
+}
+
+func assert(t *testing.T, value bool, message string) {
+  if !value {
+    t.Fatalf("Assertion failed: %v should have been true but was not: %v", value, message)
+  }
+}
+
+func TestPassingTestWithAssert(t *testing.T) {
+  setUp()
+  defer tearDown()
+
+  assert(t, true, "True is not true!")
+}
+
+func TestFailingTestWithAssert(t *testing.T) {
+  setUp()
+  defer tearDown()
+
+  assert(t, false, "False is not true!")
+}
+
 func TestPassingTest(t *testing.T) {
   result := 1 + 1
   fmt.Sprintf("1 + 1 = %d\n", result)
 }
 
 func TestSkippedTest(t *testing.T) {
+  fmt.Println("This will be printed.")
   t.Skip("Skipping this test for now.")
-
-  fmt.Printf("This should not be printed.\n")
+  fmt.Println("This will not be printed.")
 }
 
 func TestFailingTest(t *testing.T) {
-  /* t.Error("This test will ultimately fail, but will continue to completion") */
-
-  fmt.Printf("This should be printed.\n")
+  fmt.Println("This will be printed.")
+  t.Error("This test will ultimately fail, but will continue to completion")
+  fmt.Println("This will also be printed.")
 }
 
 func TestImmediatelyFailingTest(t *testing.T) {
-  /* t.Fatal("This test will fail now and not run to completion") */
-
-  fmt.Printf("This should not be printed.\n")
+  fmt.Println("This will be printed.")
+  defer fmt.Println("I wonder if this will be printed")
+  t.Fatal("This test will fail now and not run to completion")
+  fmt.Println("This will not be printed.")
 }
 
 func DoSprintf(times int) {
+  fmt.Printf("Running DoSprintf(%d).\n", times)
+
   for j := 0; j < times; j++ {
     fmt.Sprintf("This benchmark will still be run %d times.\n", times)
   }
