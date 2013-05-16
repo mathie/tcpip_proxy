@@ -13,7 +13,13 @@ type Proxy struct {
 
 func RunProxy(targetHost, targetPort, localPort string) {
   target := net.JoinHostPort(targetHost, targetPort)
-  proxy := &Proxy{ target: target, localPort: localPort, connectionNumber: 1 }
+
+  proxy := &Proxy{
+    target:           target,
+    localPort:        localPort,
+    connectionNumber: 1,
+  }
+
   proxy.run()
 }
 

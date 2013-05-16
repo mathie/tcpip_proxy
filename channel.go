@@ -16,7 +16,15 @@ type Channel struct {
 
 func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *Logger, ack chan bool) *Channel {
   binaryLogger := NewBinaryLogger(connectionNumber, peerAddr)
-  return &Channel{ from: from, to: to, connectionLogger: connectionLogger, binaryLogger: binaryLogger, ack: ack, buffer: make([]byte, 10240) }
+
+  return &Channel{
+    from:             from,
+    to:               to,
+    connectionLogger: connectionLogger,
+    binaryLogger:     binaryLogger,
+    ack:              ack,
+    buffer:           make([]byte, 10240),
+  }
 }
 
 func (channel Channel) PassThrough() {

@@ -25,7 +25,13 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
     panic(fmt.Sprintf("Unable to connect to %s, %v", target, err))
   }
 
-  return &Connection{ local: local, remote: remote, connectionNumber: connectionNumber, target: target, ack: make(chan bool) }
+  return &Connection{
+    local:            local,
+    remote:           remote,
+    connectionNumber: connectionNumber,
+    target:           target,
+    ack:              make(chan bool),
+  }
 }
 
 func (connection Connection) Process() {

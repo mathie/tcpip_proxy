@@ -14,11 +14,11 @@ type Logger struct {
 }
 
 func NewConnectionLogger(connectionNumber int, localInfo, remoteAddr net.Addr) *Logger {
-  return new(connectionLoggerFilename(connectionNumber, localInfo, remoteAddr))
+  return newLogger(connectionLoggerFilename(connectionNumber, localInfo, remoteAddr))
 }
 
 func NewBinaryLogger(connectionNumber int, peerAddr net.Addr) *Logger {
-  return new(binaryLoggerFilename(connectionNumber, peerAddr))
+  return newLogger(binaryLoggerFilename(connectionNumber, peerAddr))
 }
 
 func (logger Logger) LoggerLoop() {
@@ -52,8 +52,11 @@ func (logger Logger) Close() {
   logger.data <- []byte{}
 }
 
-func new(filename string) *Logger {
-  return &Logger { data: make(chan []byte), filename: filename }
+func newLogger(filename string) *Logger {
+  return &Logger {
+    data: make(chan []byte),
+    filename: filename,
+  }
 }
 
 func connectionLoggerFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
