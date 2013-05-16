@@ -228,7 +228,7 @@ fields of the proxy struct are available as (e.g.) `proxy.target`, etc.
 Calling the method on the data is as you'd expect:
 
 ```go
-proxy := NewProxy('localhost', '4000', '5000')
+proxy := NewProxy("localhost", "4000", "5000")
 proxy.Run()
 ```
 
@@ -316,7 +316,7 @@ Go:
 
 ```go
 func cracker() {
-  f, err := os.Open('/etc/passwd')
+  f, err := os.Open("/etc/passwd")
   // error checking elided...
   defer f.Close()
 
