@@ -101,5 +101,7 @@ func (connection Connection) to(direction int) net.Conn {
 }
 
 func (connection Connection) newChannel(direction int, connectionLog Logger) *Channel {
-  return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLog, connection.ack)
+  binaryLog := NewBinaryLog(binaryLogFilename(connection.connectionNumber, connection.channelAddr(direction)))
+
+  return NewChannel(connection.from(direction), connection.to(direction), binaryLog, connectionLog, connection.ack)
 }

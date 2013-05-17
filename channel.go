@@ -35,9 +35,7 @@ type Channel struct {
   offset, packetNumber int
 }
 
-func NewChannel(from ReadAddressableCloser, to WriteAddressableCloser, peerAddr net.Addr, connectionNumber int, connectionLog Logger, ack chan bool) *Channel {
-  binaryLog := NewBinaryLog(connectionNumber, peerAddr)
-
+func NewChannel(from ReadAddressableCloser, to WriteAddressableCloser, binaryLog BinaryLogger, connectionLog Logger, ack chan bool) *Channel {
   return &Channel{
     from:          from,
     to:            to,
