@@ -3,6 +3,7 @@ package tcpip_proxy
 import (
   "fmt"
   "net"
+  "strings"
   "time"
 )
 
@@ -35,7 +36,7 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
 }
 
 func (connection Connection) Process() {
-  connectionLog := NewConnectionLog(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
+  connectionLog := NewConnectionLog(connectionLogFilename(connection.connectionNumber, connection.localAddr(), connection.remoteAddr()))
   go connectionLog.LogLoop()
   defer connectionLog.Close()
 
@@ -104,4 +105,16 @@ func (connection Connection) newChannel(direction int, connectionLog Logger) *Ch
   binaryLog := NewBinaryLog(binaryLogFilename(connection.connectionNumber, connection.channelAddr(direction)))
 
   return NewChannel(connection.from(direction), connection.to(direction), binaryLog, connectionLog, connection.ack)
+}
+
+func connectionLogFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
+  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
+}
+
+func binaryLogFilename(connectionNumber int, peerAddr net.Addr) string {
+  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
+}
+
+func printableAddr(a net.Addr) string {
+  return strings.Replace(a.String(), ":", "-", -1)
 }

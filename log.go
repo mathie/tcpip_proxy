@@ -2,10 +2,7 @@ package tcpip_proxy
 
 import (
   "fmt"
-  "net"
   "os"
-  "strings"
-  "time"
 )
 
 type LogChannel interface {
@@ -28,12 +25,12 @@ type Log struct {
   data     chan []byte
 }
 
-func NewConnectionLog(connectionNumber int, localInfo, remoteAddr net.Addr) Logger {
-  return newLog(connectionLogFilename(connectionNumber, localInfo, remoteAddr))
+func NewConnectionLog(filename string) Logger {
+  return newLog(filename)
 }
 
-func NewBinaryLog(connectionNumber int, peerAddr net.Addr) BinaryLogger {
-  return newLog(binaryLogFilename(connectionNumber, peerAddr))
+func NewBinaryLog(filename string) BinaryLogger {
+  return newLog(filename)
 }
 
 func (logger Log) LogLoop() {
@@ -72,24 +69,4 @@ func newLog(filename string) *Log {
     data:     make(chan []byte),
     filename: filename,
   }
-}
-
-func connectionLogFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
-  return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
-}
-
-func binaryLogFilename(connectionNumber int, peerAddr net.Addr) string {
-  return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
-}
-
-func timestamp() string {
-  return formatTime(time.Now())
-}
-
-func formatTime(t time.Time) string {
-  return t.Format("2006.01.02-15.04.05")
-}
-
-func printableAddr(a net.Addr) string {
-  return strings.Replace(a.String(), ":", "-", -1)
 }
