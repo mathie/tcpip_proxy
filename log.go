@@ -8,16 +8,31 @@ import (
   "time"
 )
 
+type LogChannel interface {
+  LogLoop()
+  Close()
+}
+
+type Logger interface {
+  LogChannel
+  Log(format string, v ...interface{})
+}
+
+type BinaryLogger interface {
+  LogChannel
+  LogBinary(bytes []byte)
+}
+
 type Log struct {
   filename string
   data     chan []byte
 }
 
-func NewConnectionLog(connectionNumber int, localInfo, remoteAddr net.Addr) *Log {
+func NewConnectionLog(connectionNumber int, localInfo, remoteAddr net.Addr) Logger {
   return newLog(connectionLogFilename(connectionNumber, localInfo, remoteAddr))
 }
 
-func NewBinaryLog(connectionNumber int, peerAddr net.Addr) *Log {
+func NewBinaryLog(connectionNumber int, peerAddr net.Addr) BinaryLogger {
   return newLog(binaryLogFilename(connectionNumber, peerAddr))
 }
 

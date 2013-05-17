@@ -12,14 +12,14 @@ import (
 // other side.
 type Channel struct {
   from, to             net.Conn
-  connectionLog        *Log
-  binaryLog            *Log
+  connectionLog        Logger
+  binaryLog            BinaryLogger
   ack                  chan bool
   buffer               []byte
   offset, packetNumber int
 }
 
-func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLog *Log, ack chan bool) *Channel {
+func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLog Logger, ack chan bool) *Channel {
   binaryLog := NewBinaryLog(connectionNumber, peerAddr)
 
   return &Channel{

@@ -15,7 +15,7 @@ type Connection struct {
   local, remote    net.Conn
   connectionNumber int
   target           string
-  logger           *Log
+  logger           Logger
   ack              chan bool
 }
 
@@ -100,6 +100,6 @@ func (connection Connection) to(direction int) net.Conn {
   panic("Unreachable.")
 }
 
-func (connection Connection) newChannel(direction int, connectionLog *Log) *Channel {
+func (connection Connection) newChannel(direction int, connectionLog Logger) *Channel {
   return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLog, connection.ack)
 }
