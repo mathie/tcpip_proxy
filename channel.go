@@ -12,28 +12,28 @@ import (
 // other side.
 type Channel struct {
   from, to             net.Conn
-  connectionLogger     *Logger
-  binaryLogger         *Logger
+  connectionLog        *Log
+  binaryLog            *Log
   ack                  chan bool
   buffer               []byte
   offset, packetNumber int
 }
 
-func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLogger *Logger, ack chan bool) *Channel {
-  binaryLogger := NewBinaryLogger(connectionNumber, peerAddr)
+func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLog *Log, ack chan bool) *Channel {
+  binaryLog := NewBinaryLog(connectionNumber, peerAddr)
 
   return &Channel{
-    from:             from,
-    to:               to,
-    connectionLogger: connectionLogger,
-    binaryLogger:     binaryLogger,
-    ack:              ack,
-    buffer:           make([]byte, 10240),
+    from:          from,
+    to:            to,
+    connectionLog: connectionLog,
+    binaryLog:     binaryLog,
+    ack:           ack,
+    buffer:        make([]byte, 10240),
   }
 }
 
 func (channel Channel) PassThrough() {
-  go channel.binaryLogger.LoggerLoop()
+  go channel.binaryLog.LogLoop()
 
   for {
     err := channel.processPacket()
@@ -46,7 +46,7 @@ func (channel Channel) PassThrough() {
 }
 
 func (channel Channel) log(format string, v ...interface{}) {
-  channel.connectionLogger.Log(format, v...)
+  channel.connectionLog.Log(format, v...)
 }
 
 func (channel Channel) logHex(bytes []byte) {
@@ -54,7 +54,7 @@ func (channel Channel) logHex(bytes []byte) {
 }
 
 func (channel Channel) logBinary(bytes []byte) {
-  channel.binaryLogger.LogBinary(bytes)
+  channel.binaryLog.LogBinary(bytes)
 }
 
 func (channel Channel) read(buffer []byte) (n int, err error) {
@@ -69,7 +69,7 @@ func (channel Channel) disconnect() {
   channel.log("Disconnected from %v", channel.fromAddr())
   channel.from.Close()
   channel.to.Close()
-  channel.binaryLogger.Close()
+  channel.binaryLog.Close()
   channel.ack <- true
 }
 

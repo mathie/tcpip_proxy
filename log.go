@@ -8,20 +8,20 @@ import (
   "time"
 )
 
-type Logger struct {
+type Log struct {
   filename string
   data     chan []byte
 }
 
-func NewConnectionLogger(connectionNumber int, localInfo, remoteAddr net.Addr) *Logger {
-  return newLogger(connectionLoggerFilename(connectionNumber, localInfo, remoteAddr))
+func NewConnectionLog(connectionNumber int, localInfo, remoteAddr net.Addr) *Log {
+  return newLog(connectionLogFilename(connectionNumber, localInfo, remoteAddr))
 }
 
-func NewBinaryLogger(connectionNumber int, peerAddr net.Addr) *Logger {
-  return newLogger(binaryLoggerFilename(connectionNumber, peerAddr))
+func NewBinaryLog(connectionNumber int, peerAddr net.Addr) *Log {
+  return newLog(binaryLogFilename(connectionNumber, peerAddr))
 }
 
-func (logger Logger) LoggerLoop() {
+func (logger Log) LogLoop() {
   f, err := os.Create(logger.filename)
   if err != nil {
     panic(fmt.Sprintf("Unable to create log file, %s, %v", logger.filename, err))
@@ -40,30 +40,30 @@ func (logger Logger) LoggerLoop() {
   }
 }
 
-func (logger Logger) Log(format string, v ...interface{}) {
+func (logger Log) Log(format string, v ...interface{}) {
   logger.LogBinary([]byte(fmt.Sprintf("["+timestamp()+"] "+format+"\n", v...)))
 }
 
-func (logger Logger) LogBinary(bytes []byte) {
+func (logger Log) LogBinary(bytes []byte) {
   logger.data <- bytes
 }
 
-func (logger Logger) Close() {
+func (logger Log) Close() {
   logger.data <- []byte{}
 }
 
-func newLogger(filename string) *Logger {
-  return &Logger{
+func newLog(filename string) *Log {
+  return &Log{
     data:     make(chan []byte),
     filename: filename,
   }
 }
 
-func connectionLoggerFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
+func connectionLogFilename(connectionNumber int, localAddr, remoteAddr net.Addr) string {
   return fmt.Sprintf("log-%s-%04d-%s-%s.log", timestamp(), connectionNumber, printableAddr(localAddr), printableAddr(remoteAddr))
 }
 
-func binaryLoggerFilename(connectionNumber int, peerAddr net.Addr) string {
+func binaryLogFilename(connectionNumber int, peerAddr net.Addr) string {
   return fmt.Sprintf("log-binary-%s-%04d-%s.log", timestamp(), connectionNumber, printableAddr(peerAddr))
 }
 

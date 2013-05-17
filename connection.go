@@ -15,7 +15,7 @@ type Connection struct {
   local, remote    net.Conn
   connectionNumber int
   target           string
-  logger           *Logger
+  logger           *Log
   ack              chan bool
 }
 
@@ -35,16 +35,16 @@ func NewConnection(local net.Conn, connectionNumber int, target string) *Connect
 }
 
 func (connection Connection) Process() {
-  connectionLogger := NewConnectionLogger(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
-  go connectionLogger.LoggerLoop()
-  defer connectionLogger.Close()
+  connectionLog := NewConnectionLog(connection.connectionNumber, connection.localAddr(), connection.remoteAddr())
+  go connectionLog.LogLoop()
+  defer connectionLog.Close()
 
   started := time.Now()
 
-  connectionLogger.Log("Connected to %s.\n", connection.target)
+  connectionLog.Log("Connected to %s.\n", connection.target)
 
-  localToRemoteChannel := connection.newChannel(LocalToRemote, connectionLogger)
-  remoteToLocalChannel := connection.newChannel(RemoteToLocal, connectionLogger)
+  localToRemoteChannel := connection.newChannel(LocalToRemote, connectionLog)
+  remoteToLocalChannel := connection.newChannel(RemoteToLocal, connectionLog)
 
   go localToRemoteChannel.PassThrough()
   go remoteToLocalChannel.PassThrough()
@@ -56,7 +56,7 @@ func (connection Connection) Process() {
   finished := time.Now()
   duration := finished.Sub(started)
 
-  connectionLogger.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
+  connectionLog.Log("Disconnected from %s, duration %s.\n", connection.target, duration.String())
 }
 
 func (connection Connection) localAddr() net.Addr {
@@ -100,6 +100,6 @@ func (connection Connection) to(direction int) net.Conn {
   panic("Unreachable.")
 }
 
-func (connection Connection) newChannel(direction int, connectionLogger *Logger) *Channel {
-  return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLogger, connection.ack)
+func (connection Connection) newChannel(direction int, connectionLog *Log) *Channel {
+  return NewChannel(connection.from(direction), connection.to(direction), connection.channelAddr(direction), connection.connectionNumber, connectionLog, connection.ack)
 }
