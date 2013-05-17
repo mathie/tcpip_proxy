@@ -2,8 +2,23 @@ package tcpip_proxy
 
 import (
   "encoding/hex"
+  "io"
   "net"
 )
+
+type Addressable interface {
+  LocalAddr() net.Addr
+}
+
+type ReadAddressableCloser interface {
+  io.ReadCloser
+  Addressable
+}
+
+type WriteAddressableCloser interface {
+  io.WriteCloser
+  Addressable
+}
 
 // Represents a unidirectional channel between two TCP sockets. A channel only
 // deals with communication in one direction, so a Connection (which
@@ -11,7 +26,8 @@ import (
 // reads data from one side, logs it to a binary logger and writes it to the
 // other side.
 type Channel struct {
-  from, to             net.Conn
+  from                 ReadAddressableCloser
+  to                   WriteAddressableCloser
   connectionLog        Logger
   binaryLog            BinaryLogger
   ack                  chan bool
@@ -19,7 +35,7 @@ type Channel struct {
   offset, packetNumber int
 }
 
-func NewChannel(from, to net.Conn, peerAddr net.Addr, connectionNumber int, connectionLog Logger, ack chan bool) *Channel {
+func NewChannel(from ReadAddressableCloser, to WriteAddressableCloser, peerAddr net.Addr, connectionNumber int, connectionLog Logger, ack chan bool) *Channel {
   binaryLog := NewBinaryLog(connectionNumber, peerAddr)
 
   return &Channel{
